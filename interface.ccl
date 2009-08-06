@@ -1,0 +1,7 @@
+# Interface definition for thorn Outflow
+# $Header:$
+
+implements: outflow
+inherits: ADMBase SphericalSurface StaticConformal 
+
+REAL outflow_flux[num_detectors] TYPE=scalar

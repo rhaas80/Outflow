@@ -1,0 +1,56 @@
+# Parameter definitions for thorn Outflow
+
+INT compute_every "How frequently to compute the outflow" STEERABLE=always
+{
+  1:* :: ""
+} 1
+
+CCTK_INT num_detectors "how many detectors do we have"
+{
+  0:* :: "whatever"
+} 0
+
+CCTK_INT surface_index[100] "the indices of the sphericalsurfaces from which we take the surfaces to compute the outflow on"
+{
+  -1:* :: "whatever"
+} -1
+
+CCTK_STRING interpolator_name "Which interpolator should I use" 
+{
+  ".+" :: "Any nonempty string"
+} "Hermite polynomial interpolation"
+
+CCTK_STRING interpolator_pars "Parameters for the interpolator"
+{
+  ".*" :: "Any string that Util_TableSetFromString() will take"
+} "order=3"
+
+CCTK_STRING coord_system "What is the coord system?"
+{
+  ".*" :: "Any smart string will do"
+} "cart3d"
+
+CCTK_INT verbose "How verbose do you want it?"
+{
+  0:* :: "0 is nothing, 1 is interesting, >1 is crazy"
+} 1
+
+STRING out_format "Which format for Scalar floating-point number output" STEERABLE = ALWAYS
+{
+  ^(\.[1]?[0-9])?[EGefg]$ :: "output with given precision in exponential / floating point notation"
+} ".19g"
+
+# for now I hardcode the current to use to be the flux of dens in Whisky but
+# I'd really like to turn this into a parameter also one might want to change
+# the interface over to be more RegridBoxes like with the option to use either
+# SphericalSurfaces or to force to paramaters
+
+SHARES: SphericalSurface
+
+USES INT maxntheta
+USES INT maxnphi
+USES INT nsurfaces AS sphericalsurfaces_nsurfaces
+
+shares: IO
+
+USES STRING out_dir
