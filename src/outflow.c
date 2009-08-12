@@ -314,7 +314,7 @@ static int get_gab_ja_onto_detector(CCTK_ARGUMENTS,
     v2 = g11[i]*pow2(velx[i]) + g22[i]*pow2(vely[i]) + g33[i]*pow2(velz[i]) + 
          2*g12[i]*velx[i]*vely[i] + 2*g13[i]*velx[i]*velz[i] + 2*g23[i]*vely[i]*velz[i];
     w_lorentz = sqrt(1. / (1. - v2));
-    assert(w_lorentz > 1.);
+    assert(w_lorentz >= 1.);
     dens = sqrt(detg)*rho[i]*w_lorentz;
 
     jx[i] = - dens * (alpha[i]*velx[i] - beta1[i]);
