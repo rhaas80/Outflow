@@ -49,6 +49,8 @@ SHARES: SphericalSurface
 
 USES INT maxntheta
 USES INT maxnphi
+USES INT nghoststheta
+USES INT nghostsphi
 USES INT nsurfaces AS sphericalsurfaces_nsurfaces
 
 shares: IO

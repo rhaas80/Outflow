@@ -29,33 +29,28 @@ void outflow (CCTK_ARGUMENTS);
 #define DIM 3
 #define NUM_INPUT_ARRAYS 6+4+4
 #define NUM_OUTPUT_ARRAYS 6+4+4
+#define NGHOSTS 2
 
 #define MAX_NUMBER_DETECTORS 100
 static CCTK_INT file_created[MAX_NUMBER_DETECTORS];
 
 static inline CCTK_REAL pow2(CCTK_REAL x) {return x*x;}
-static int upstairs_metric(CCTK_REAL gg[3][3],CCTK_REAL gu[3][3]);
-static int drdth_drdph(int i, int j, int ntheta, int nphi,
+static int drdth_drdph(int i, int j,
                 int sn,
                 CCTK_REAL dth, CCTK_REAL dph,
                 CCTK_INT verbose,
                 CCTK_INT maxntheta, CCTK_INT maxnphi,
                 CCTK_REAL *sf_radius,
                 CCTK_REAL *ht, CCTK_REAL *hp);
-static int get_gab_ja_onto_detector(CCTK_ARGUMENTS,
+static int get_ja_onto_detector(CCTK_ARGUMENTS,
                              CCTK_INT sn,
-                             CCTK_REAL *g11, CCTK_REAL *g12, CCTK_REAL *g13,
-                             CCTK_REAL *g22, CCTK_REAL *g23, CCTK_REAL *g33,
                              CCTK_REAL *jx, CCTK_REAL *jy, CCTK_REAL *jz);
-static int get_g_j_local(int i, int j, int ntheta,
-                  CCTK_REAL *g11_det,CCTK_REAL *g12_det,CCTK_REAL *g13_det,
-                  CCTK_REAL *g22_det,CCTK_REAL *g23_det,CCTK_REAL *g33_det,
+static int get_j_local(int i, int j, int ntheta,
                   CCTK_REAL *j1_det,CCTK_REAL *j2_det,CCTK_REAL *j3_det,
-                  CCTK_REAL gloc[3][3],CCTK_REAL jloc[3]);
+                  CCTK_REAL jloc[3]);
 static CCTK_INT outflow_get_local_memory(CCTK_INT npoints);
 static int Outflow_write_output(CCTK_ARGUMENTS, CCTK_INT det, CCTK_REAL sum);
 static CCTK_REAL *outflow_allocate_array(CCTK_INT npoints, const char *name);
-
 
 /* IO */
 static int Outflow_write_output(CCTK_ARGUMENTS, CCTK_INT det, CCTK_REAL sum)
@@ -120,11 +115,9 @@ static int Outflow_write_output(CCTK_ARGUMENTS, CCTK_INT det, CCTK_REAL sum)
   return 1;
 }
 
-/* fills g11...g33, j1...j3 with the interpolated numbers */
-static int get_gab_ja_onto_detector(CCTK_ARGUMENTS,
+/* fills j1...j3 with the interpolated numbers */
+static int get_ja_onto_detector(CCTK_ARGUMENTS,
                              CCTK_INT sn,
-                             CCTK_REAL *g11, CCTK_REAL *g12, CCTK_REAL *g13,
-                             CCTK_REAL *g22, CCTK_REAL *g23, CCTK_REAL *g33,
                              CCTK_REAL *jx, CCTK_REAL *jy, CCTK_REAL *jz)
 {
   DECLARE_CCTK_ARGUMENTS; 
@@ -132,29 +125,25 @@ static int get_gab_ja_onto_detector(CCTK_ARGUMENTS,
   int ierr, retval = 1;
   CCTK_INT ind,ind2d;
   CCTK_REAL th,ph,ct,st,cp,sp;
-  CCTK_INT ntheta,nphi;
+  CCTK_INT ntheta,nphi,npoints;
   // auxilliary variables used in constructing j
   static CCTK_REAL *rho = NULL, *velx = NULL, *vely = NULL, *velz = NULL;
   static CCTK_REAL *beta1 = NULL, *beta2 = NULL, *beta3 = NULL, *alpha = NULL;
+  static CCTK_REAL *g11 = NULL, *g12 = NULL, *g13 = NULL, *g22 = NULL;
+  static CCTK_REAL *g23 =  NULL, *g33 = NULL;
 
   assert(sn>=0);
-  assert(g11); assert(g12); assert(g13);
-  assert(g22); assert(g23); assert(g33);
   assert(jx); assert(jy); assert(jz);
 
-  ntheta=sf_ntheta[sn];
-  nphi=sf_nphi[sn];
+  ntheta=sf_ntheta[sn]-2*nghoststheta[sn];
+  nphi=sf_nphi[sn]-2*nghostsphi[sn];
+  npoints=ntheta*nphi;
 
   if (verbose>1) {
     CCTK_VInfo(CCTK_THORNSTRING,"surface %d (%g,%g,%g) nth,nph (%d,%d)",
 	       sn,sf_centroid_x[sn],sf_centroid_y[sn],sf_centroid_z[sn],
 	       ntheta,nphi);
   }
-
-  const CCTK_REAL pi=acos(-1.0);
-  const CCTK_REAL dth=pi/(ntheta-1);
-  const CCTK_REAL dph=2.0*pi/(nphi-1);
-  const CCTK_INT npoints=ntheta*nphi;
 
   CCTK_INT interp_npoints=npoints;
   // uni-processor code - only work on CPU 0
@@ -169,6 +158,12 @@ static int get_gab_ja_onto_detector(CCTK_ARGUMENTS,
     name = outflow_allocate_array(npoints, #name); \
   assert(name)
   
+  ALLOCATE_TEMP(g11);
+  ALLOCATE_TEMP(g12);
+  ALLOCATE_TEMP(g13);
+  ALLOCATE_TEMP(g22);
+  ALLOCATE_TEMP(g23);
+  ALLOCATE_TEMP(g33);
   ALLOCATE_TEMP(rho); 
   ALLOCATE_TEMP(velx);
   ALLOCATE_TEMP(vely);
@@ -180,17 +175,24 @@ static int get_gab_ja_onto_detector(CCTK_ARGUMENTS,
 # undef ALLOCATE_TEMP
 
   // coordinates setup
+  const CCTK_INT imin=nghoststheta[sn], imax=sf_ntheta[sn]-nghoststheta[sn]-1;
+  const CCTK_INT jmin=nghostsphi[sn], jmax=sf_nphi[sn]-nghostsphi[sn]-1;
+  const CCTK_REAL oth=sf_origin_theta[sn];
+  const CCTK_REAL oph=sf_origin_phi[sn];
+  const CCTK_REAL dth=sf_delta_theta[sn];
+  const CCTK_REAL dph=sf_delta_phi[sn];
+
   CCTK_REAL det_x[npoints], det_y[npoints], det_z[npoints];
-  for (int i=0;i<ntheta;i++) {
-    th=i*dth;
+  for (int i=imin,n=0;i<=imax;i++,n++) { // theta in [0.5 delta_th, pi-0.5 delta_th]
+    th=oth + i * dth;
     ct=cos(th);
     st=sin(th);
-    for (int j=0;j<nphi;j++) {
+    for (int j=jmin,m=0;j<=jmax;j++,m++) { // phi in [0,2pi-delta_phi]
       ind=i + maxntheta *(j+maxnphi*sn); // XXX not sf_ntheta!
-      ph=j*dph;
+      ph=oph + j * dph;
       cp=cos(ph);
       sp=sin(ph);
-      ind2d=i + ntheta*j;
+      ind2d=n + ntheta*m;
       det_x[ind2d]=sf_centroid_x[sn]+sf_radius[ind]*cp*st;
       det_y[ind2d]=sf_centroid_y[sn]+sf_radius[ind]*sp*st;
       det_z[ind2d]=sf_centroid_z[sn]+sf_radius[ind]*ct;
@@ -338,68 +340,11 @@ static int get_gab_ja_onto_detector(CCTK_ARGUMENTS,
 
 }
 
-/* invert 3-metric to get g^ij - see TAT/TGRtensor/src/tensor.F90*/
-static int upstairs_metric(CCTK_REAL gg[3][3],CCTK_REAL gu[3][3])
-{
-  const CCTK_REAL dtg=(gg[0][0]*gg[1][1]-gg[0][1]*gg[0][1])*gg[2][2]
-    -gg[0][0]*gg[1][2]*gg[1][2]
-    +2.0*gg[0][1]*gg[0][2]*gg[1][2]
-    -gg[0][2]*gg[0][2]*gg[1][1];
-
-  if (dtg==0) {
-      return -1;
-  }
-  if (dtg<0) {
-      return -2;
-  }
-
-  gu[0][0] = (gg[1][1] * gg[2][2] - gg[1][2] *gg[1][2] ) / dtg;
-  gu[0][1] = (gg[0][2] * gg[1][2] - gg[0][1] *gg[2][2] ) / dtg;
-  gu[0][2] = (gg[0][1] * gg[1][2] - gg[0][2] *gg[1][1] ) / dtg;
-  gu[1][1] = (gg[0][0] * gg[2][2] - gg[0][2] *gg[0][2] ) / dtg;
-  gu[1][2] = (gg[0][2] * gg[0][1] - gg[1][2] *gg[0][0] ) / dtg;
-  gu[2][2] = (gg[0][0] * gg[1][1] - gg[0][1] *gg[0][1] ) / dtg;
-
-  gu[1][0] = gu[0][1];
-  gu[2][0] = gu[0][2];
-  gu[2][1] = gu[1][2];
-
-#if 0
-  CCTK_REAL tmp;
-  for (int i=0;i<3;i++) {
-    for (int j=0;j<3;j++) {
-      tmp=0;
-      for (int a=0;a<3;a++) {
-        tmp+=gu[i][a]*gg[a][j];
-      }
-      fprintf(stderr,"test: %d %d: %g\n",i,j,tmp);
-    }
-  }
-#endif
-
-  return 1;
-}
-
-
-
-static int get_g_j_local(int i, int j, int ntheta,
-                  CCTK_REAL *g11_det,CCTK_REAL *g12_det,CCTK_REAL *g13_det,
-                  CCTK_REAL *g22_det,CCTK_REAL *g23_det,CCTK_REAL *g33_det,
+static int get_j_local(int i, int j, int ntheta,
                   CCTK_REAL *j1_det,CCTK_REAL *j2_det,CCTK_REAL *j3_det,
-                  CCTK_REAL gloc[3][3],CCTK_REAL jloc[3])
+                  CCTK_REAL jloc[3])
 {
-  /* gloc_ij = g_ij, kloc_ij=K_ij - downstairs index */
   CCTK_INT ind2d=i + ntheta*j;
-  gloc[0][0]=g11_det[ind2d];
-  gloc[0][1]=g12_det[ind2d];
-  gloc[0][2]=g13_det[ind2d];
-  gloc[1][0]=g12_det[ind2d];
-  gloc[1][1]=g22_det[ind2d];
-  gloc[1][2]=g23_det[ind2d];
-  gloc[2][0]=g13_det[ind2d];
-  gloc[2][1]=g23_det[ind2d];
-  gloc[2][2]=g33_det[ind2d];
-  
   /* jloc_i - upstairs index */
   jloc[0]=j1_det[ind2d];
   jloc[1]=j2_det[ind2d];
@@ -408,7 +353,7 @@ static int get_g_j_local(int i, int j, int ntheta,
   return 1;
 }
 
-static int drdth_drdph(int i, int j, int ntheta, int nphi,
+static int drdth_drdph(int i, int j, 
                 int sn,
                 CCTK_REAL dth, CCTK_REAL dph,
                 CCTK_INT verbose,
@@ -416,90 +361,37 @@ static int drdth_drdph(int i, int j, int ntheta, int nphi,
                 CCTK_REAL *sf_radius,
                 CCTK_REAL *ht, CCTK_REAL *hp)
 {
-  CCTK_INT ind=0;
+  CCTK_INT ind;
   CCTK_REAL htp1,htm1,hpp1,hpm1;
+  CCTK_REAL htp2,htm2,hpp2,hpm2;
 
   /* dr/dth dr/dph */
-  if (i != 0 && i != ntheta-1) {
-    ind=(i+1) + maxntheta *(j+maxnphi*sn); // XXX not sf_ntheta!
-    htp1=sf_radius[ind];
-    ind=(i-1) + maxntheta *(j+maxnphi*sn); // XXX not sf_ntheta!
-    htm1=sf_radius[ind];
-    *ht=(htp1-htm1)/(2.*dth);
-    if (verbose>5) {
-      fprintf(stderr,"  normal : i=%d j=%d ht=%g\n",i,j,*ht);
-    }
+  ind=(i+1) + maxntheta *(j+maxnphi*sn); // XXX not sf_ntheta!
+  htp1=sf_radius[ind];
+  ind=(i-1) + maxntheta *(j+maxnphi*sn); // XXX not sf_ntheta!
+  htm1=sf_radius[ind];
+  ind=(i+2) + maxntheta *(j+maxnphi*sn); // XXX not sf_ntheta!
+  htp2=sf_radius[ind];
+  ind=(i-2) + maxntheta *(j+maxnphi*sn); // XXX not sf_ntheta!
+  htm2=sf_radius[ind];
+  *ht = (1./12.*htm2-2./3.*htm1+2./3.*htp1-1./12.*htp2)/dth;
+  if (verbose>5) {
+    fprintf(stderr,"  normal : i=%d j=%d ht=%g\n",i,j,*ht);
   }
-  else {
-    if (i==0) {
-      ind=maxntheta *(j+maxnphi*sn);
-      CCTK_REAL ht1=sf_radius[ind];
-      ind=1 + maxntheta *(j+maxnphi*sn);
-      CCTK_REAL ht2=sf_radius[ind];
-      ind=2 + maxntheta *(j+maxnphi*sn);
-      CCTK_REAL ht3=sf_radius[ind];
-      *ht=-1./(2.*dth)*(3.*ht1-4.*ht2+ht3);
-      if (verbose>5) { 
-        fprintf(stderr,"  one-sided for i=0: %d,%d ht=%g\n",i,j,*ht);            
-      }
-    }
-    else if (i==ntheta-1) {
-      ind= ntheta-1 + maxntheta *(j+maxnphi*sn);
-      CCTK_REAL htn=sf_radius[ind];
-      ind= ntheta-2 + maxntheta *(j+maxnphi*sn);
-      CCTK_REAL htn1=sf_radius[ind];
-      ind= ntheta-3 + maxntheta *(j+maxnphi*sn);
-      CCTK_REAL htn2=sf_radius[ind];
-      *ht=-1./(2.*dth)*(3.*htn-4.*htn1+htn2);
-      if (verbose>5) { 
-        fprintf(stderr,"  one-sided for i=ntheta-1: %d,%d ht=%g\n",i,j,*ht);            
-      }
-    }
-    else {
-      if (verbose>2) CCTK_WARN(1,"unknown theta position");
-      return -1;
-    }
+
+  ind=i + maxntheta *((j+1)+maxnphi*sn); // XXX not sf_ntheta!
+  hpp1=sf_radius[ind];
+  ind=i + maxntheta *((j-1)+maxnphi*sn); // XXX not sf_ntheta!
+  hpm1=sf_radius[ind];
+  ind=i + maxntheta *((j+2)+maxnphi*sn); // XXX not sf_ntheta!
+  hpp2=sf_radius[ind];
+  ind=i + maxntheta *((j-2)+maxnphi*sn); // XXX not sf_ntheta!
+  hpm2=sf_radius[ind];
+  *hp = (1./12.*hpm2-2./3.*hpm1+2./3.*hpp1-1./12.*hpp2)/dph;
+  if (verbose>5) { 
+    fprintf(stderr,"  normal : i=%d j=%d hp=%g\n",i,j,*hp);            
   }
-  if (j !=0 && j != nphi-1) {
-    ind=i + maxntheta *((j+1)+maxnphi*sn); // XXX not sf_ntheta!
-    hpp1=sf_radius[ind];
-    ind=i + maxntheta *((j-1)+maxnphi*sn); // XXX not sf_ntheta!
-    hpm1=sf_radius[ind];
-    *hp=(hpp1-hpm1)/(2.*dph);
-    if (verbose>5) { 
-      fprintf(stderr,"  normal %d %d hp=%g\n",i,j,*hp);            
-    }
-  }
-  else {
-    if (j==0) {
-      ind=i+maxntheta *(maxnphi*sn);
-      CCTK_REAL hp1=sf_radius[ind];
-      ind=i + maxntheta *(1+maxnphi*sn);
-      CCTK_REAL hp2=sf_radius[ind];
-      ind=i + maxntheta *(2+maxnphi*sn);
-      CCTK_REAL hp3=sf_radius[ind];
-      *hp=-1./(2.*dph)*(3.*hp1-4.*hp2+hp3);
-      if (verbose>5) { 
-        fprintf(stderr,"  one-sided for j=0: %d %d hp=%g\n",i,j,*hp);            
-      }
-    }
-    else if (j==nphi-1) {
-      ind= i + maxntheta *(nphi-1+maxnphi*sn);
-      CCTK_REAL hpn=sf_radius[ind];
-      ind= i + maxntheta *(nphi-2+maxnphi*sn);
-      CCTK_REAL hpn1=sf_radius[ind];
-      ind= i + maxntheta *(nphi-3+maxnphi*sn);
-      CCTK_REAL hpn2=sf_radius[ind];
-      *hp=-1./(2.*dph)*(3.*hpn-4.*hpn1+hpn2);
-      if (verbose>5) { 
-        fprintf(stderr,"  one-sided for j=nphi-1: %d %d hp=%g\n",i,j,*hp);            
-      }
-    }
-    else {
-      if (verbose>2) CCTK_WARN(1,"unknown phi position");
-      return -2;
-    }
-  }
+
   return 1;
 }
 
@@ -561,7 +453,6 @@ CCTK_REAL *outflow_allocate_array(CCTK_INT npoints, const char *name)
 
 
 static CCTK_INT have_integrand_memory=0;
-static CCTK_REAL *g11_det, *g12_det, *g13_det, *g22_det, *g23_det, *g33_det;
 static CCTK_REAL *j1_det, *j2_det, *j3_det;
 static CCTK_INT outflow_get_local_memory(CCTK_INT npoints)
 {
@@ -571,13 +462,6 @@ static CCTK_INT outflow_get_local_memory(CCTK_INT npoints)
 
   if (have_integrand_memory==0) {
     if (verbose>0) CCTK_INFO("allocating new memory");
-    // metric on detector (covariant rank 2 tensor)
-    g11_det=outflow_allocate_array(npoints,"g11_det");
-    g12_det=outflow_allocate_array(npoints,"g12_det");
-    g13_det=outflow_allocate_array(npoints,"g13_det");
-    g22_det=outflow_allocate_array(npoints,"g22_det");
-    g23_det=outflow_allocate_array(npoints,"g23_det");
-    g33_det=outflow_allocate_array(npoints,"g33_det");
     // current density on detector (vector)
     j1_det=outflow_allocate_array(npoints,"j1_det");
     j2_det=outflow_allocate_array(npoints,"j2_det");
@@ -630,11 +514,19 @@ void outflow (CCTK_ARGUMENTS)
                  "didn't find valid detector surface for sn=%d, det=%d",sn,det);
       continue;
     }
-    const CCTK_INT ntheta=sf_ntheta[sn];
-    const CCTK_INT nphi=sf_nphi[sn];
-    const CCTK_REAL pi=acos(-1.0);
-    const CCTK_REAL dth=pi/(ntheta-1);
-    const CCTK_REAL dph=2.0*pi/(nphi-1);
+    if(nghoststheta[sn] < NGHOSTS || nghostsphi[sn] < NGHOSTS) { // we need at least NGHOSTS ghost zones 
+      CCTK_VInfo(CCTK_THORNSTRING,
+                 "number of ghost zones for spherical surface %d must be at least %d.",sn,NGHOSTS);
+      continue;
+    }
+
+    const CCTK_INT imin=nghoststheta[sn], imax=sf_ntheta[sn]-nghoststheta[sn]-1;
+    const CCTK_INT jmin=nghostsphi[sn], jmax=sf_nphi[sn]-nghostsphi[sn]-1;
+    const CCTK_INT ntheta = imax-imin+1, nphi = jmax-jmin+1;
+    const CCTK_REAL oth=sf_origin_theta[sn];
+    const CCTK_REAL oph=sf_origin_phi[sn];
+    const CCTK_REAL dth=sf_delta_theta[sn];
+    const CCTK_REAL dph=sf_delta_phi[sn];
     const CCTK_REAL dtp=dth*dph;
 
     if (verbose>2) {
@@ -642,76 +534,61 @@ void outflow (CCTK_ARGUMENTS)
                  ntheta,nphi,dth,dph);
     }
 
-    ierr=get_gab_ja_onto_detector(CCTK_PASS_CTOC, sn,
-                              g11_det, g12_det, g13_det,
-                              g22_det, g23_det, g33_det,
+    ierr=get_ja_onto_detector(CCTK_PASS_CTOC, sn,
                               j1_det, j2_det, j3_det);
     if (ierr<0) {
       CCTK_WARN(1,"unable to get g_ab and j^a on the detector. not doing anything.");
       return;
     }
 
-    CCTK_REAL /*phi[3],rvec[3],*/rdn[3]/*,rup[3]*/;
-/*    CCTK_REAL phi_x[3], phi_y[3], phi_z[3];*/
-    CCTK_REAL gloc[3][3], jloc[3], gup[3][3];
-    CCTK_REAL th,ph,dA;
-    CCTK_REAL sum=0; // the value of the flux integral
+    CCTK_REAL rdn[3], rhat[3], phihat[3], thetahat[3];
+    CCTK_REAL jloc[3];
+    CCTK_REAL th,ph;
+    CCTK_REAL sum; // the value of the flux integral
 
     const CCTK_INT myproc= CCTK_MyProc(cctkGH);
 
-    CCTK_REAL iwtheta=0,iwphi=0,intweight=0;
+    CCTK_REAL iwtheta,iwphi,intweight;
     /* loop over detector surface */
-    for (int i=0;i<ntheta;i++)
+    sum = 0.;
+    for (int i=imin,n=0;i<=imax;i++,n++) // theta in [0.5 delta_th, pi-0.5 delta_th]
     {
-      th=i*dth;
+      th=oth + i * dth;
       cost=cos(th);
       sint=sin(th);
-      if      (i==0 || i==ntheta-1) iwtheta=3.0/8.0;
-      else if (i==1 || i==ntheta-2) iwtheta=7.0/6.0;
-      else if (i==2 || i==ntheta-3) iwtheta=23.0/24.0;
+      // weigths from NR(C++,2) 4.1.14 plus extrapolated 1/2 integral (see Maple worksheet)
+      if      (i==imin+0 || i==imax-0) iwtheta=13.0/12.0;
+      else if (i==imin+1 || i==imax-1) iwtheta= 7.0/ 8.0;
+      else if (i==imin+2 || i==imax-2) iwtheta=25.0/24.0;
       else iwtheta=1;
 
-      for (int j=0;j<nphi;j++)
+      for (int j=jmin,m=0;j<=jmax;j++,m++) // phi in [0,2pi-delta_phi]
       {
-        ph=j*dph;
+        ph=oph + j * dph;
         cosp=cos(ph);
         sinp=sin(ph);
-        // ok I am fairly confused as to why this is necessary in the phi direction which is periodic (roland)
-        // in particular see this article: http://www.math.lsa.umich.edu/~rauch/Paper4.pdf
-        // frankly a simple trapezoid rule which sums up all terms with the same weight should be perfectly enough for this
-	if      (j==0 || j==nphi-1) iwphi=3.0/8.0;
-	else if (j==1 || j==nphi-2) iwphi=7.0/6.0;
-	else if (j==2 || j==nphi-3) iwphi=23.0/24.0;
-	else iwphi=1;
+	iwphi=1; // trapezoid rule
 	intweight=iwphi*iwtheta;
 
         ind=i + maxntheta *(j+maxnphi*sn); // XXX not sf_ntheta!
         rp=sf_radius[ind];
 
-        get_g_j_local(i,j,ntheta,
-                      g11_det,g12_det,g13_det,
-                      g22_det,g23_det,g33_det,
-                      j1_det,j2_det,j3_det,
-                      gloc,jloc);
-
-        /* invert 3-metric to get g^ij */
-        ierr=upstairs_metric(gloc,gup);
-        if (ierr<0) {
-          if (verbose>2) {
-            CCTK_VInfo(CCTK_THORNSTRING,"unable to compute inverse metric at th=%g ph=%g",
-                       th,ph);
-            if (ierr==-1) {
-                CCTK_INFO("detg=0!");
-            }
-            if (ierr==-2) {
-                CCTK_INFO("metric negative");
-            }
-          }
-          continue; // skip this point
+        if (verbose>5) {
+          fprintf(stderr,"r=%g theta=%g phi=%g\n",rp,th,ph);
         }
 
+        // operates on interpolated values
+        get_j_local(n,m,ntheta,
+                      j1_det,j2_det,j3_det,
+                      jloc);
+
+        // the flat space-like 3d unit vectors
+        rhat    [0] =  cosp*sint;rhat    [1] =  sinp*sint;rhat    [2] =  cost;
+        thetahat[0] =  cosp*cost;thetahat[1] =  sinp*cost;thetahat[2] = -sint;
+        phihat  [0] = -sinp     ;phihat  [1] =  cosp     ;phihat  [2] =     0;
+
         /* get derivatives of r in theta and phi direction */
-        ierr=drdth_drdph(i, j, ntheta, nphi, 
+        ierr=drdth_drdph(i, j,
                          sn,
                          dth,dph,
                          verbose,
@@ -723,152 +600,16 @@ void outflow (CCTK_ARGUMENTS)
           continue;
         }
 
-        /* STEP 1 : COMPUTATION OF APPROXIMATE KILLING VECTOR */
-        /* dx^a/dr^b */
-#if 0
-        CCTK_REAL dxdr=sint*cosp;
-        CCTK_REAL dydr=sint*sinp;
-        CCTK_REAL dzdr=cost;
-#endif
-        CCTK_REAL dxdp=rp*sint*(-sinp);
-        CCTK_REAL dydp=rp*sint*cosp;
-        CCTK_REAL dzdp=0;
-        CCTK_REAL dxdt=rp*cosp*cost;
-        CCTK_REAL dydt=rp*sinp*cost;
-        CCTK_REAL dzdt=rp*(-sint);
-
-#if 0
-        /* phi^x - not killing, simply coordinate, but this vector has to be in the surface */
-        phi[0]=dxdr*hp+dxdp;
-        phi[1]=dydr*hp+dydp;
-        phi[2]=dzdr*hp+dzdp;
-#endif
-
-        /* STEP 2 : COMPUTATION OF SURFACE NORMAL VECTOR */
-        /* d_i theta, d_i phi */
-        CCTK_REAL X=rp*cosp*sint;
-        CCTK_REAL Y=rp*sinp*sint;
-        CCTK_REAL Z=rp*cost;
-        /* stay away from Z-axis */
-        if (X*X+Y*Y == 0) {
-          X=0;
-          Y=1e-8;
+        // the vector surface element
+        for(int idir = 0 ; idir < 3 ; idir++)
+        {
+          rdn[idir] = pow2(rp)*sint*rhat[idir] - ht*rp*thetahat[idir]
+                      - hp*rp*phihat[idir];
         }
 
-#if 0
-	/* flat space rotational Killing vectors */
-	phi_x[0]=0;
-	phi_x[1]=-Z;
-	phi_x[2]=Y;
-
-	phi_y[0]=Z;
-	phi_y[1]=0;
-	phi_y[2]=-X;
-
-	phi_z[0]=-Y;
-	phi_z[1]=X;
-	phi_z[2]=0;
-#endif
-
-        CCTK_REAL dtdx=X*1.0*Z*1.0/(sqrt(Y*Y+X*X)*(Z*Z+Y*Y+X*X));
-        CCTK_REAL dtdy=Y*1.0*Z*1.0/(sqrt(Y*Y+X*X)*(Z*Z+Y*Y+X*X));
-        CCTK_REAL dtdz=-sqrt(Y*Y+X*X)*1.0/(Z*Z+Y*Y+X*X);
-        CCTK_REAL dpdx=-Y*1.0/(Y*Y+X*X);
-        CCTK_REAL dpdy=X*1.0/(Y*Y+X*X);
-        CCTK_REAL dpdz=0;
-        CCTK_REAL dhdi[3];
-        dhdi[0]=ht*dtdx+hp*dpdx;
-        dhdi[1]=ht*dtdy+hp*dpdy;
-        dhdi[2]=ht*dtdz+hp*dpdz;
-        CCTK_REAL ni[3],fi[3];
-        /* ni: unit normal vector */
-        ni[0]=cosp*sint;
-        ni[1]=sinp*sint;
-        ni[2]=     cost;
-        fi[0]=ni[0];
-        fi[1]=ni[1];
-        fi[2]=ni[2];
-        for (int idir=0;idir<3;idir++) {
-          fi[idir]=fi[idir]-dhdi[idir];
-        }
-
-        CCTK_REAL metnorm=0.;
-        for (int idir=0;idir<3;idir++) {
-          for (int jdir=0;jdir<3;jdir++) {
-            metnorm = metnorm+fi[idir]*fi[jdir]*gup[idir][jdir];
-          }
-        }
-        metnorm=sqrt(metnorm);
-        for (int idir=0;idir<3;idir++) {
-          rdn[idir]=fi[idir]/metnorm;
-        }
-#if 0
-        for (int idir=0;idir<3;idir++) {
-          rup[idir]=0;
-          for (int jdir=0;jdir<3;jdir++) {
-            rup[idir]=rup[idir]+gup[idir][jdir]*rdn[jdir];
-          }
-        }
-        rvec[0]=rup[0];
-        rvec[1]=rup[1];
-        rvec[2]=rup[2];
-
-        /* check rvec[] and phi[] are orthogonal */
-        if (verbose>5) {
-          CCTK_REAL tmp=0;
-          for (int a=0;a<3;a++) {
-            for (int b=0;b<3;b++) {
-              tmp+=gloc[a][b]*rvec[a]*phi[b];
-            }
-          }
-          fprintf(stderr,"i=%d j=%d normalization test=%g ==0?\n",i,j,tmp);
-        }
-#endif
-
-        /* STEP 3 : COMPUTATION OF AREA ELEMENT dA */
-        /* two metric tdn_ij: g_ab e_i^a e_j^b
-           e^a_b=dx^a/dth^b */
-        CCTK_REAL ee[3][2];
-        ee[0][0] = dxdt;
-        ee[0][1] = dxdp;
-        ee[1][0] = dydt;
-        ee[1][1] = dydp;
-        ee[2][0] = dzdt;
-        ee[2][1] = dzdp;
-
-        CCTK_REAL tdn[2][2];
-        for (int a=0;a<2;a++) {
-          for (int b=0;b<2;b++) {
-            tdn[a][b]=0;
-            for (int c=0;c<3;c++) {
-              for (int d=0;d<3;d++) {
-                tdn[a][b]+=gloc[c][d]*ee[c][a]*ee[d][b];
-              }
-            }
-          }
-        }
-
-        /* determinant */
-        CCTK_REAL tdetg;
-        tdetg=tdn[0][0]*tdn[1][1]-tdn[1][0]*tdn[0][1];
-
-        if (tdetg>0) {
-          dA=sqrt(tdetg)*dtp*intweight; // area element  (weighted for 4th order)
-        }
-        else {
-          dA=0;
-        }
-
-#if 0
-        CCTK_REAL xvec[3],yvec[3],zvec[3];
-        xvec[0]=1;xvec[1]=0;xvec[2]=0;
-        yvec[0]=0;yvec[1]=1;yvec[2]=0;
-        zvec[0]=0;zvec[1]=0;zvec[2]=1;
-#endif
-
-        /* STEP 4 : FLUX FORMULA */
+        // sum the integral
         for (int a=0;a<3;a++) {
-          sum   += jloc[a] * rdn[a] * dA;
+          sum   += jloc[a] * rdn[a] * intweight * dtp;
         }
 
         if (verbose>4) {
