@@ -689,8 +689,7 @@ void outflow_postrecovery(CCTK_ARGUMENTS)
   }
 }
 
-
-CCTK_REAL *outflow_allocate_array(CCTK_INT npoints, const char *name)
+static CCTK_REAL *outflow_allocate_array(CCTK_INT npoints, const char *name)
 {
   DECLARE_CCTK_PARAMETERS;
 
