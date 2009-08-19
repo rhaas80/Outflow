@@ -319,9 +319,9 @@ static int get_ja_onto_detector(CCTK_ARGUMENTS,
     assert(w_lorentz >= 1.);
     dens = sqrt(detg)*rho[i]*w_lorentz;
 
-    jx[i] = - dens * (alpha[i]*velx[i] - beta1[i]);
-    jy[i] = - dens * (alpha[i]*vely[i] - beta2[i]);
-    jz[i] = - dens * (alpha[i]*velz[i] - beta3[i]);
+    jx[i] = dens * (alpha[i]*velx[i] - beta1[i]);
+    jy[i] = dens * (alpha[i]*vely[i] - beta2[i]);
+    jz[i] = dens * (alpha[i]*velz[i] - beta3[i]);
   }
 
   if (ierr<0) {
