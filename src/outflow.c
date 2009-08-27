@@ -502,6 +502,9 @@ void outflow (CCTK_ARGUMENTS)
   /* loop over detectors */
   for (int det=0;det<num_detectors;det++)
   {
+    if ( cctk_iteration % compute_every_det[det] != 0 ) {
+      continue;
+    }
     sn=surface_index[det];
     if (sn>=sphericalsurfaces_nsurfaces) {
       CCTK_VInfo(CCTK_THORNSTRING,
