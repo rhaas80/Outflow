@@ -316,7 +316,22 @@ static int get_ja_onto_detector(CCTK_ARGUMENTS,
     v2 = g11[i]*pow2(velx[i]) + g22[i]*pow2(vely[i]) + g33[i]*pow2(velz[i]) + 
          2*g12[i]*velx[i]*vely[i] + 2*g13[i]*velx[i]*velz[i] + 2*g23[i]*vely[i]*velz[i];
     w_lorentz = sqrt(1. / (1. - v2));
-    assert(w_lorentz >= 1.);
+    if( verbose > 0 && ! w_lorentz >= 1.) 
+    {
+        static CCTK_INT last_warned = -1;
+
+        if(verbose > 1 || last_warned != cctk_iteration)
+        {
+          CCTK_VWarn (1, __LINE__, __FILE__, CCTK_THORNSTRING,
+                "%s: Unphysical Lorentz factor %15.6g for data g = [%15.6g,%15.6g,%15.6g,%15.6g,%15.6g,%15.6g] "
+                "vel = [%15.6g,%15.6g,%15.6g] occured in iteration %d at location [%15.6g,%15.6g,%15.6g]",
+                __func__, w_lorentz, g11[i],g12[i],g13[i],g22[i],g23[i],g33[i], velx[i],vely[i],velz[i],
+                cctk_iteration, det_x[i],det_y[i],det_z[i]);
+          last_warned = cctk_iteration;
+        }
+
+        continue;
+    }
     dens = sqrt(detg)*rho[i]*w_lorentz;
 
     jx[i] = dens * (alpha[i]*velx[i] - beta1[i]);
