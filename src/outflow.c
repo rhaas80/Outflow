@@ -8,6 +8,7 @@
 #include "cctk_Arguments.h"
 #include "cctk_Parameters.h"
 #include "util_Table.h"
+#include "util_String.h"
 
 /* definition of rest mass: Eq. (11) in arXiv:0812.2245v2 M = \int \rho W \sqrt\gamma d^3x
  * this meshes with the EOM for hydro which gives: D_{,t} + (D [\alpha v^i - \beta^i])_{,\i} = 0 
@@ -27,14 +28,23 @@ void outflow_postrecovery(CCTK_ARGUMENTS);
 void outflow (CCTK_ARGUMENTS);
 
 #define DIM 3
+#define MAX_NUMBER_DETECTORS 100
+#define MAX_NUMBER_EXTRAS 20
+#define MAX_NUMBER_TRESHOLDS 20
 #define NUM_INPUT_ARRAYS 6+4+4
 #define NUM_OUTPUT_ARRAYS 6+4+4
 #define NGHOSTS 2
+#define ARRAY_INIT_VALUE 0.
 
-#define MAX_NUMBER_DETECTORS 100
 static CCTK_INT file_created[MAX_NUMBER_DETECTORS];
+static CCTK_INT fluxdens_file_created[MAX_NUMBER_DETECTORS];
+static CCTK_INT extras_file_created[MAX_NUMBER_DETECTORS*MAX_NUMBER_EXTRAS];
 
 static inline CCTK_REAL pow2(CCTK_REAL x) {return x*x;}
+
+/* copied from Multipole */
+static void fill_variable(int idx, const char *optstring, void *callback_arg);
+
 static int drdth_drdph(int i, int j,
                 int sn,
                 CCTK_REAL dth, CCTK_REAL dph,
@@ -42,32 +52,155 @@ static int drdth_drdph(int i, int j,
                 CCTK_INT maxntheta, CCTK_INT maxnphi,
                 CCTK_REAL *sf_radius,
                 CCTK_REAL *ht, CCTK_REAL *hp);
-static int get_ja_onto_detector(CCTK_ARGUMENTS,
-                             CCTK_INT sn,
-                             CCTK_REAL *jx, CCTK_REAL *jy, CCTK_REAL *jz);
-static int get_j_local(int i, int j, int ntheta,
-                  CCTK_REAL *j1_det,CCTK_REAL *j2_det,CCTK_REAL *j3_det,
-                  CCTK_REAL jloc[3]);
+static int get_ja_w_and_extras_onto_detector(CCTK_ARGUMENTS, CCTK_INT sn,
+        CCTK_INT num_extras, CCTK_INT extras_ind[MAX_NUMBER_EXTRAS], CCTK_REAL
+        *jx, CCTK_REAL *jy, CCTK_REAL *jz, CCTK_REAL *w, CCTK_REAL **extras);
+static int get_j_and_w_local(int i, int j, int ntheta, CCTK_REAL
+        *j1_det,CCTK_REAL *j2_det,CCTK_REAL *j3_det, CCTK_REAL *w_det, CCTK_REAL
+        jloc[3], CCTK_REAL *wloc);
 static CCTK_INT outflow_get_local_memory(CCTK_INT npoints);
-static int Outflow_write_output(CCTK_ARGUMENTS, CCTK_INT det, CCTK_REAL sum);
+static int Outflow_write_output(CCTK_ARGUMENTS, CCTK_INT det, CCTK_REAL flux,
+        CCTK_REAL *threshold_fluxes);
+static int Outflow_write_2d_output(CCTK_ARGUMENTS, const char *varname, CCTK_INT
+        det, CCTK_INT *file_created_2d, CCTK_REAL *data_det, CCTK_REAL *w_det,
+        CCTK_REAL *surfaceelement_det);
 static CCTK_REAL *outflow_allocate_array(CCTK_INT npoints, const char *name);
+static CCTK_REAL *get_surface_projection(CCTK_ARGUMENTS, int extra_num);
 
 /* IO */
-static int Outflow_write_output(CCTK_ARGUMENTS, CCTK_INT det, CCTK_REAL sum)
+static int Outflow_write_2d_output(CCTK_ARGUMENTS, const char *varname, CCTK_INT
+        det, CCTK_INT *file_created_2d, CCTK_REAL *data_det, CCTK_REAL *w_det,
+        CCTK_REAL *surfaceelement_det)
 {
   DECLARE_CCTK_PARAMETERS;
   DECLARE_CCTK_ARGUMENTS;
 
-  const char *fmode = (file_created[det]>0) ? "a" : "w";  // file mode: append if already written
+  char const *fmode;
   char *filename;
-  char varname[1024]; // XXX fixed size
-  char file_extension[5]=".asc";
   char format_str_real[2048]; // XXX fixed size
   FILE *file;
 
   if (verbose>3) {
     CCTK_VInfo(CCTK_THORNSTRING, "writing output");
   }
+
+  // file mode: append if already written
+  if (det>=MAX_NUMBER_DETECTORS) {
+    CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
+               "warn: det=%d, but MAX_NUMBER_DETECTORS=%d, increase",
+               det,MAX_NUMBER_DETECTORS);
+  }
+  fmode = (*file_created_2d>0) ? "a" : "w";
+
+  // filename
+  Util_asprintf (&filename, "%s/outflow_det_%d_2d_%s.asc", out_dir, det, varname);
+  assert(filename);
+
+  // open file
+  file = fopen (filename, fmode);
+  if (!file) {
+    CCTK_VWarn (1, __LINE__, __FILE__, CCTK_THORNSTRING,
+                "write_outflow: Could not open scalar output file '%s'",
+                filename);
+    return -1;
+  }
+
+  // write header on startup
+  if (*file_created_2d<=0) {
+    fprintf(file,"# 2d Outflow\n");
+    fprintf(file,"# detector no.=%d\n",det);
+    fprintf(file,"# gnuplot column index:\n");
+    fprintf(file,"# 1:it 2:t 3:x 4:y 5:z 6:%s 7:w_lorentz 8:surface_element\n", varname);
+  }
+
+  // write data
+  sprintf (format_str_real,
+           "%%d\t%%%s\t%%%s\t%%%s\t%%%s\t%%%s\t%%%s\t%%%s\n", 
+           out_format, out_format, out_format, out_format, out_format,
+           out_format, out_format);
+
+  assert(surface_index[det]);
+  const CCTK_INT sn = surface_index[det];
+  const CCTK_INT ntheta=sf_ntheta[sn]-2*nghoststheta[sn];
+
+  const CCTK_INT imin=nghoststheta[sn], imax=sf_ntheta[sn]-nghoststheta[sn]-1;
+  const CCTK_INT jmin=nghostsphi[sn], jmax=sf_nphi[sn]-nghostsphi[sn]-1;
+  const CCTK_REAL oth=sf_origin_theta[sn];
+  const CCTK_REAL oph=sf_origin_phi[sn];
+  const CCTK_REAL dth=sf_delta_theta[sn];
+  const CCTK_REAL dph=sf_delta_phi[sn];
+
+  CCTK_REAL th, ph, ct,st, cp,sp;
+  CCTK_REAL det_x, det_y, det_z;
+  for (int i=imin,n=0;i<=imax;i++,n++) { // theta in [0.5 delta_th, pi-0.5 delta_th]
+    th=oth + i * dth;
+    ct=cos(th);
+    st=sin(th);
+
+    for (int j=jmin,m=0;j<=jmax;j++,m++) { // phi in [0,2pi-delta_phi]
+      int ind = i + maxntheta *(j+maxnphi*sn); // XXX not sf_ntheta!
+      int ind2d = n + ntheta*m;
+
+      ph=oph + j * dph;
+      cp=cos(ph);
+      sp=sin(ph);
+
+      det_x=sf_centroid_x[sn]+sf_radius[ind]*cp*st;
+      det_y=sf_centroid_y[sn]+sf_radius[ind]*sp*st;
+      det_z=sf_centroid_z[sn]+sf_radius[ind]*ct;
+
+      fprintf(file, format_str_real, cctk_iteration, cctk_time,
+              det_x,det_y,det_z, data_det[ind2d], w_det[ind2d],
+              surfaceelement_det[ind2d]);
+    }
+    /* repeat first angle to ge a closed surface in gnuplot */
+    int ind = i + maxntheta *(jmin+maxnphi*sn); // XXX not sf_ntheta!
+    int ind2d = n + ntheta*0;
+    ph=oph + jmin * dph;
+    cp=cos(ph);
+    sp=sin(ph);
+    det_x=sf_centroid_x[sn]+sf_radius[ind]*cp*st;
+    det_y=sf_centroid_y[sn]+sf_radius[ind]*sp*st;
+    det_z=sf_centroid_z[sn]+sf_radius[ind]*ct;
+    fprintf(file, format_str_real, cctk_iteration, cctk_time, det_x,det_y,det_z,
+            data_det[ind2d], w_det[ind2d], surfaceelement_det[ind2d]);
+
+    fprintf(file, "\n"); /* create a grid edge for gnuplot */
+  }
+  fprintf(file, "\n\n"); /* create a block for gnuplot */
+
+  fclose(file); 
+  free(filename);
+  *file_created_2d = 1;
+
+  return 1;
+}
+
+static int Outflow_write_output(CCTK_ARGUMENTS, CCTK_INT det, CCTK_REAL flux,
+        CCTK_REAL *threshold_fluxes)
+{
+  DECLARE_CCTK_PARAMETERS;
+  DECLARE_CCTK_ARGUMENTS;
+
+  char const *fmode;
+  char *filename;
+  char varname[1024]; // XXX fixed size
+  char file_extension[5]=".asc";
+  char format_str_real[2048]; // XXX fixed size
+  int thresh, col;
+  FILE *file;
+
+  if (verbose>3) {
+    CCTK_VInfo(CCTK_THORNSTRING, "writing output");
+  }
+
+  // file mode: append if already written
+  if (det>=MAX_NUMBER_DETECTORS) {
+    CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
+               "warn: det=%d, but MAX_NUMBER_DETECTORS=%d, increase",
+               det,MAX_NUMBER_DETECTORS);
+  }
+  fmode = (file_created[det]>0) ? "a" : "w";
 
   // filename
   sprintf(varname, "outflow_det_%d",det);
@@ -91,23 +224,29 @@ static int Outflow_write_output(CCTK_ARGUMENTS, CCTK_INT det, CCTK_REAL sum)
     fprintf(file,"# Outflow\n");
     fprintf(file,"# detector no.=%d\n",det);
     fprintf(file,"# gnuplot column index:\n");
-    fprintf(file,"# 1:it 2:t 3:flux\n");
+    fprintf(file,"# 1:it 2:t 3:flux");
+    if(num_thresholds > 0) {
+      col = 4;
+      for(thresh = 0 ; thresh < num_thresholds ; thresh++) {
+        fprintf(file," %d:w>=%g",col++,threshold[thresh]);
+      }
+    }
+    fprintf(file,"\n");
   }
 
   // write data
   sprintf (format_str_real,
-           "%%d\t%%%s\t%%%s\n", 
+           "%%d\t%%%s\t%%%s", 
            out_format,out_format);
-  fprintf(file, format_str_real, cctk_iteration, cctk_time, sum);
+  fprintf(file, format_str_real, cctk_iteration, cctk_time, flux);
+  sprintf (format_str_real, "\t%%%s", out_format);
+  for(thresh = 0 ; thresh < num_thresholds ; thresh++) {
+    fprintf(file,format_str_real,threshold_fluxes[thresh]);
+  }
+  fprintf(file,"\n");
 
   fclose(file); 
   free(filename);
-
-  if (det>=MAX_NUMBER_DETECTORS) {
-    CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
-               "warn: det=%d, but MAX_NUMBER_DETECTORS=%d, increase",
-               det,MAX_NUMBER_DETECTORS);
-  }
 
   if (file_created[det]==0) {
     file_created[det]=1;
@@ -115,10 +254,47 @@ static int Outflow_write_output(CCTK_ARGUMENTS, CCTK_INT det, CCTK_REAL sum)
   return 1;
 }
 
-/* fills j1...j3 with the interpolated numbers */
-static int get_ja_onto_detector(CCTK_ARGUMENTS,
-                             CCTK_INT sn,
-                             CCTK_REAL *jx, CCTK_REAL *jy, CCTK_REAL *jz)
+/* return pointer to surface_projection_<extra_num> */
+static CCTK_REAL *get_surface_projection(CCTK_ARGUMENTS, int extra_num)
+{
+  DECLARE_CCTK_ARGUMENTS;
+
+  CCTK_REAL *retval = NULL;
+  switch(extra_num)
+  {
+    case  0: retval = surface_projection_0; break;
+    case  1: retval = surface_projection_1; break;
+    case  2: retval = surface_projection_2; break;
+    case  3: retval = surface_projection_3; break;
+    case  4: retval = surface_projection_4; break;
+    case  5: retval = surface_projection_5; break;
+    case  6: retval = surface_projection_6; break;
+    case  7: retval = surface_projection_7; break;
+    case  8: retval = surface_projection_8; break;
+    case  9: retval = surface_projection_9; break;
+    case 10: retval = surface_projection_10; break;
+    case 11: retval = surface_projection_11; break;
+    case 12: retval = surface_projection_12; break;
+    case 13: retval = surface_projection_13; break;
+    case 14: retval = surface_projection_14; break;
+    case 15: retval = surface_projection_15; break;
+    case 16: retval = surface_projection_16; break;
+    case 17: retval = surface_projection_17; break;
+    case 18: retval = surface_projection_18; break;
+    case 19: retval = surface_projection_19; break;
+    default: CCTK_VWarn(1, __LINE__, __FILE__, CCTK_THORNSTRING,
+                "invalid extra variable number %d passed. Must be less than 20",
+                extra_num);
+             break;
+  }
+
+  return retval;
+}
+
+/* fills j1...j3,w and the extras with the interpolated numbers */
+static int get_ja_w_and_extras_onto_detector(CCTK_ARGUMENTS, CCTK_INT sn,
+        CCTK_INT num_extras, CCTK_INT extras_ind[MAX_NUMBER_EXTRAS], CCTK_REAL
+        *jx, CCTK_REAL *jy, CCTK_REAL *jz, CCTK_REAL *w, CCTK_REAL **extras)
 {
   DECLARE_CCTK_ARGUMENTS; 
   DECLARE_CCTK_PARAMETERS; 
@@ -205,7 +381,7 @@ static int get_ja_onto_detector(CCTK_ARGUMENTS,
         (const void *) det_z };
 
   // 3d input arrays
-  const CCTK_INT input_array_indices[NUM_INPUT_ARRAYS]
+  CCTK_INT input_array_indices[NUM_INPUT_ARRAYS + MAX_NUMBER_EXTRAS]
     = { CCTK_VarIndex("ADMBase::gxx"),
         CCTK_VarIndex("ADMBase::gxy"),
         CCTK_VarIndex("ADMBase::gxz"),
@@ -223,7 +399,10 @@ static int get_ja_onto_detector(CCTK_ARGUMENTS,
         CCTK_VarIndex("ADMBase::betaz"),
         CCTK_VarIndex("ADMBase::alp"),
       };
-  for(unsigned int i = 0 ; i < sizeof(input_array_indices)/sizeof(input_array_indices[0]) ; i++) {
+  for(int i = 0 ; i < num_extras ; i++) {
+     input_array_indices[NUM_INPUT_ARRAYS + i] = extras_ind[i];
+  }
+  for(int i = 0 ; i < NUM_INPUT_ARRAYS + num_extras ; i++) {
     if(input_array_indices[i] < 0) {
       CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
         "couldn't find variable '%s'",
@@ -232,16 +411,13 @@ static int get_ja_onto_detector(CCTK_ARGUMENTS,
     }
   }
 
-  const CCTK_INT output_array_types[NUM_OUTPUT_ARRAYS]
-    = { CCTK_VARIABLE_REAL, CCTK_VARIABLE_REAL, CCTK_VARIABLE_REAL,
-        CCTK_VARIABLE_REAL, CCTK_VARIABLE_REAL, CCTK_VARIABLE_REAL,
-        CCTK_VARIABLE_REAL, CCTK_VARIABLE_REAL, CCTK_VARIABLE_REAL,
-        CCTK_VARIABLE_REAL, CCTK_VARIABLE_REAL, CCTK_VARIABLE_REAL,
-        CCTK_VARIABLE_REAL, CCTK_VARIABLE_REAL,
-      };
+  CCTK_INT output_array_types[NUM_OUTPUT_ARRAYS + MAX_NUMBER_EXTRAS];
+  for(int i = 0 ; i < NUM_OUTPUT_ARRAYS + num_extras ; i++) {
+    output_array_types[i] = CCTK_VARIABLE_REAL;
+  }
 
   // 2d output arrays
-  void * output_arrays[NUM_OUTPUT_ARRAYS]
+  void * output_arrays[NUM_OUTPUT_ARRAYS + MAX_NUMBER_EXTRAS]
     = { (void *) g11, 
         (void *) g12,
         (void *) g13,
@@ -259,12 +435,19 @@ static int get_ja_onto_detector(CCTK_ARGUMENTS,
         (void *) beta3,
         (void *) alpha, 
       };
+  for(int i = 0 ; i < num_extras ; i++) {
+     output_arrays[NUM_OUTPUT_ARRAYS + i] = extras[i];
+  }
 
-  const CCTK_INT operand_indices[NUM_OUTPUT_ARRAYS]
-    = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13 };
+  CCTK_INT operand_indices[NUM_OUTPUT_ARRAYS + MAX_NUMBER_EXTRAS];
+  for(int i = 0 ; i < NUM_OUTPUT_ARRAYS + num_extras  ; i++) {
+    operand_indices[i] = i;
+  }
 
-  const CCTK_INT opcodes[NUM_OUTPUT_ARRAYS]
-    = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  0,  0,  0,  0 };
+  CCTK_INT opcodes[NUM_OUTPUT_ARRAYS + MAX_NUMBER_EXTRAS];
+  for(int i = 0 ; i < NUM_OUTPUT_ARRAYS + num_extras  ; i++) {
+    opcodes[i] = 0;
+  }
 
   // handles setup
   const int operator_handle = CCTK_InterpHandle(interpolator_name);
@@ -275,10 +458,10 @@ static int get_ja_onto_detector(CCTK_ARGUMENTS,
 
   int param_table_handle = Util_TableCreateFromString(interpolator_pars);
 
-  Util_TableSetIntArray(param_table_handle, NUM_OUTPUT_ARRAYS,
+  Util_TableSetIntArray(param_table_handle, NUM_OUTPUT_ARRAYS + num_extras,
                         operand_indices, "operand_indices");
   
-  Util_TableSetIntArray(param_table_handle, NUM_OUTPUT_ARRAYS, 
+  Util_TableSetIntArray(param_table_handle, NUM_OUTPUT_ARRAYS + num_extras, 
                         opcodes, "opcodes");
   
   if (param_table_handle < 0)
@@ -301,9 +484,9 @@ static int get_ja_onto_detector(CCTK_ARGUMENTS,
                                interp_npoints,
                                CCTK_VARIABLE_REAL,
                                interp_coords,
-                               NUM_INPUT_ARRAYS, // Number of input arrays
+                               NUM_INPUT_ARRAYS + num_extras, // Number of input arrays
                                input_array_indices,
-                               NUM_OUTPUT_ARRAYS, // Number of output arrays
+                               NUM_OUTPUT_ARRAYS + num_extras, // Number of output arrays
                                output_array_types,
                                output_arrays);
 
@@ -311,10 +494,13 @@ static int get_ja_onto_detector(CCTK_ARGUMENTS,
   for(int i = 0 ; i < npoints ; i++) {
     CCTK_REAL detg, dens, v2, w_lorentz;
 
-    detg = 2*g12[i]*g13[i]*g23[i] + g33[i]*(g11[i]*g22[i] - pow2(g12[i])) - g22[i]*pow2(g13[i]) - g11[i]*pow2(g23[i]);
+    detg = 2*g12[i]*g13[i]*g23[i] + g33[i]*(g11[i]*g22[i] - pow2(g12[i])) -
+        g22[i]*pow2(g13[i]) - g11[i]*pow2(g23[i]);
 
-    v2 = g11[i]*pow2(velx[i]) + g22[i]*pow2(vely[i]) + g33[i]*pow2(velz[i]) + 
-         2*g12[i]*velx[i]*vely[i] + 2*g13[i]*velx[i]*velz[i] + 2*g23[i]*vely[i]*velz[i];
+    v2 = g11[i]*pow2(velx[i]) + g22[i]*pow2(vely[i]) + g33[i]*pow2(velz[i]) +
+        2*g12[i]*velx[i]*vely[i] + 2*g13[i]*velx[i]*velz[i] +
+        2*g23[i]*vely[i]*velz[i];
+
     w_lorentz = sqrt(1. / (1. - v2));
     if( verbose > 0 && ! w_lorentz >= 1.) 
     {
@@ -325,8 +511,9 @@ static int get_ja_onto_detector(CCTK_ARGUMENTS,
           CCTK_VWarn (1, __LINE__, __FILE__, CCTK_THORNSTRING,
                 "%s: Unphysical Lorentz factor %15.6g for data g = [%15.6g,%15.6g,%15.6g,%15.6g,%15.6g,%15.6g] "
                 "vel = [%15.6g,%15.6g,%15.6g] occured in iteration %d at location [%15.6g,%15.6g,%15.6g]",
-                __func__, w_lorentz, g11[i],g12[i],g13[i],g22[i],g23[i],g33[i], velx[i],vely[i],velz[i],
-                cctk_iteration, det_x[i],det_y[i],det_z[i]);
+                __func__, w_lorentz, g11[i],g12[i],g13[i],g22[i],g23[i],g33[i],
+                velx[i],vely[i],velz[i], cctk_iteration,
+                det_x[i],det_y[i],det_z[i]);
           last_warned = cctk_iteration;
         }
 
@@ -337,6 +524,7 @@ static int get_ja_onto_detector(CCTK_ARGUMENTS,
     jx[i] = dens * (alpha[i]*velx[i] - beta1[i]);
     jy[i] = dens * (alpha[i]*vely[i] - beta2[i]);
     jz[i] = dens * (alpha[i]*velz[i] - beta3[i]);
+    w[i]  = w_lorentz;
   }
 
   if (ierr<0) {
@@ -355,15 +543,16 @@ static int get_ja_onto_detector(CCTK_ARGUMENTS,
 
 }
 
-static int get_j_local(int i, int j, int ntheta,
+static int get_j_and_w_local(int i, int j, int ntheta,
                   CCTK_REAL *j1_det,CCTK_REAL *j2_det,CCTK_REAL *j3_det,
-                  CCTK_REAL jloc[3])
+                  CCTK_REAL *w_det, CCTK_REAL jloc[3], CCTK_REAL *wloc)
 {
   CCTK_INT ind2d=i + ntheta*j;
   /* jloc_i - upstairs index */
   jloc[0]=j1_det[ind2d];
   jloc[1]=j2_det[ind2d];
   jloc[2]=j3_det[ind2d];
+  *wloc  =w_det[ind2d];
 
   return 1;
 }
@@ -425,6 +614,10 @@ void outflow_init(CCTK_ARGUMENTS)
 
   for (int i=0;i<MAX_NUMBER_DETECTORS;i++) {
     file_created[i]=0;
+    fluxdens_file_created[i]=0;
+    for (int j=0;j<MAX_NUMBER_EXTRAS;j++) {
+      extras_file_created[i*MAX_NUMBER_EXTRAS+j]=0;
+    }
   }
 }
 
@@ -467,12 +660,13 @@ CCTK_REAL *outflow_allocate_array(CCTK_INT npoints, const char *name)
 }
 
 
-static CCTK_INT have_integrand_memory=0;
-static CCTK_REAL *j1_det, *j2_det, *j3_det;
+static CCTK_REAL *j1_det, *j2_det, *j3_det, *w_det, *fluxdens_det, *surfaceelement_det;
 static CCTK_INT outflow_get_local_memory(CCTK_INT npoints)
 {
   DECLARE_CCTK_PARAMETERS;
   
+  static CCTK_INT have_integrand_memory=0;
+
   if (verbose>1) CCTK_INFO("in allocate_memory");
 
   if (have_integrand_memory==0) {
@@ -481,6 +675,9 @@ static CCTK_INT outflow_get_local_memory(CCTK_INT npoints)
     j1_det=outflow_allocate_array(npoints,"j1_det");
     j2_det=outflow_allocate_array(npoints,"j2_det");
     j3_det=outflow_allocate_array(npoints,"j3_det");
+    w_det =outflow_allocate_array(npoints,"w_det");
+    fluxdens_det =outflow_allocate_array(npoints,"fluxdens_det");
+    surfaceelement_det =outflow_allocate_array(npoints,"surfaceelement_det");
     // update memory allocation flag
     have_integrand_memory=1;
   }
@@ -492,15 +689,42 @@ static CCTK_INT outflow_get_local_memory(CCTK_INT npoints)
   return 1;
 }
 
+/* callback routine to add one extra variable to be output */
+static void fill_variable(int idx, const char *optstring, void *callback_arg)
+{
+  assert(idx >= 0);
+  assert(callback_arg);
 
+  CCTK_INT *extras_ind = (CCTK_INT * ) callback_arg;
+
+  if(extras_ind[MAX_NUMBER_EXTRAS-1] != -1) { /* no more free slots */
+    CCTK_VWarn(1, __LINE__, __FILE__, CCTK_THORNSTRING,
+               "too many extra variables, ignoring variable '%s'.",
+               CCTK_VarName(idx));
+    return;
+  }
+
+  /* find the first free slot in extras_ind and store the new index in it */
+  for(int i = 0 ; i < MAX_NUMBER_EXTRAS ; i++)
+  {
+    if(extras_ind[i] == -1) {
+      extras_ind[i] = idx;
+      break;
+    }
+  }
+}
 
 void outflow (CCTK_ARGUMENTS)
 {
   DECLARE_CCTK_ARGUMENTS;
   DECLARE_CCTK_PARAMETERS;
-  CCTK_INT sn, ind, ierr;
+  CCTK_INT sn, ind, ind2d, ierr;
   CCTK_REAL ht,hp;
   CCTK_REAL sint,sinp,cost,cosp,rp;
+  // variables related to the extra projected grid functions
+  CCTK_INT num_extras;
+  CCTK_INT extras_ind[MAX_NUMBER_EXTRAS];
+  CCTK_REAL *extras[MAX_NUMBER_EXTRAS];
 
   if (cctk_iteration % compute_every != 0) {
     return;
@@ -514,6 +738,40 @@ void outflow (CCTK_ARGUMENTS)
     return;
   }
 
+  /* clear the grid arrays */
+  for(int i = 0 ; i < maxntheta*maxnphi*num_detectors ; i++)
+    fluxdens_projected[i] = w_lorentz_projected[i] = ARRAY_INIT_VALUE;
+  for(int e = 0 ; e < MAX_NUMBER_EXTRAS ; e++)
+  {
+    CCTK_REAL *surface_projection = get_surface_projection(CCTK_PASS_CTOC, e);
+    for(int i = 0 ; i < maxntheta*maxnphi*num_detectors ; i++)
+    {
+      surface_projection[i] = ARRAY_INIT_VALUE;
+    }
+  }
+
+  /* parse variables string and allocate temporary memory for them */
+  if(!CCTK_Equals(extra_variables, "")) {
+    for(int i = 0 ; i < MAX_NUMBER_EXTRAS ; i++) /* initialize so that we can count later */
+    {
+      extras_ind[i] = -1;
+    }
+
+    ierr = CCTK_TraverseString(extra_variables, fill_variable, extras_ind,
+            CCTK_GROUP_OR_VAR);
+    assert(ierr > 0);
+  
+    for(num_extras = 0 ; num_extras < MAX_NUMBER_EXTRAS ; num_extras++) /* count valid indices */
+    {
+      if(extras_ind[num_extras] == -1)
+        break;
+      extras[num_extras] = (CCTK_REAL *)malloc(sizeof(CCTK_REAL)*npoints);
+      assert(extras[num_extras]);
+    }
+  } else {
+    num_extras = 0;
+  }
+
   /* loop over detectors */
   for (int det=0;det<num_detectors;det++)
   {
@@ -521,6 +779,7 @@ void outflow (CCTK_ARGUMENTS)
       continue;
     }
     sn=surface_index[det];
+    assert(sn >= 0);
     if (sn>=sphericalsurfaces_nsurfaces) {
       CCTK_VInfo(CCTK_THORNSTRING,
                  "surface number sn=%d too large, increase SphericalSurface::nsurfaces from its current value %d",
@@ -552,23 +811,28 @@ void outflow (CCTK_ARGUMENTS)
                  ntheta,nphi,dth,dph);
     }
 
-    ierr=get_ja_onto_detector(CCTK_PASS_CTOC, sn,
-                              j1_det, j2_det, j3_det);
+    ierr=get_ja_w_and_extras_onto_detector(CCTK_PASS_CTOC, sn, num_extras,
+            extras_ind, j1_det, j2_det, j3_det, w_det, extras);
     if (ierr<0) {
-      CCTK_WARN(1,"unable to get g_ab and j^a on the detector. not doing anything.");
-      return;
+      CCTK_WARN(1,"unable to get g_ab, j^a and the extra variables onto the detector. not doing anything.");
+      continue;
     }
 
     CCTK_REAL rdn[3], rhat[3], phihat[3], thetahat[3];
-    CCTK_REAL jloc[3];
+    CCTK_REAL jloc[3], wloc;
     CCTK_REAL th,ph;
-    CCTK_REAL sum; // the value of the flux integral
+    CCTK_REAL sum, sum_thresh[MAX_NUMBER_TRESHOLDS]; // the value of the flux integral
 
     const CCTK_INT myproc= CCTK_MyProc(cctkGH);
 
     CCTK_REAL iwtheta,iwphi,intweight;
-    /* loop over detector surface */
+    /* init integration vars */
     sum = 0.;
+    for (int t = 0 ; t < MAX_NUMBER_TRESHOLDS ; t++) {
+      sum_thresh[t] = 0.;
+    }
+
+    /* loop over detector surface */
     for (int i=imin,n=0;i<=imax;i++,n++) // theta in [0.5 delta_th, pi-0.5 delta_th]
     {
       th=oth + i * dth;
@@ -596,9 +860,9 @@ void outflow (CCTK_ARGUMENTS)
         }
 
         // operates on interpolated values
-        get_j_local(n,m,ntheta,
+        get_j_and_w_local(n,m,ntheta,
                       j1_det,j2_det,j3_det,
-                      jloc);
+                      w_det,jloc,&wloc);
 
         // the flat space-like 3d unit vectors
         rhat    [0] =  cosp*sint;rhat    [1] =  sinp*sint;rhat    [2] =  cost;
@@ -619,20 +883,44 @@ void outflow (CCTK_ARGUMENTS)
         }
 
         // the vector surface element
+        CCTK_REAL mag_rdn = 0;
         for(int idir = 0 ; idir < 3 ; idir++)
         {
-          rdn[idir] = pow2(rp)*sint*rhat[idir] - ht*rp*thetahat[idir]
-                      - hp*rp*phihat[idir];
+          rdn[idir] = pow2(rp)*sint*rhat[idir] - ht*rp*thetahat[idir] -
+                      hp*rp*phihat[idir];
+          mag_rdn += pow2(rdn[idir]);
         }
+        mag_rdn = sqrt(mag_rdn);
 
         // sum the integral
+        CCTK_REAL df = 0, fluxdens_temp = 0;
         for (int a=0;a<3;a++) {
-          sum   += jloc[a] * rdn[a] * intweight * dtp;
+          df += jloc[a] * rdn[a] * intweight * dtp;
+          fluxdens_temp += jloc[a] * rdn[a]/mag_rdn;
         }
+        fluxdens_det[n + ntheta*m] = fluxdens_temp; /* store flux density for output */
+        surfaceelement_det[n + ntheta*m] = mag_rdn * dtp; /* area element */
 
+        sum += df;
         if (verbose>4) {
           fprintf(stderr,"sum=%g\n",sum);
         }
+
+        for(int t = 0 ; t < num_thresholds ; t++)
+        {
+          if(threshold[t] == -1) {
+            CCTK_VWarn(1, __LINE__, __FILE__, CCTK_THORNSTRING,
+                       "threshold %d is set to -1, ignoring.", t);
+            continue;
+          }
+          if(wloc >= threshold[t]) {
+            sum_thresh[t] += df;
+          }
+          if (verbose>4) {
+            fprintf(stderr,"sum_thresh[%d]=%g\n",t,sum_thresh[t]);
+          }
+        }
+
       } // j : phi
     } // i : theta
 
@@ -642,12 +930,61 @@ void outflow (CCTK_ARGUMENTS)
 
     outflow_flux[det]=sum;
 
+    /* store results in grid arrays, translating indices on the way */
+    /* we fill in only the upper left corner of the grid array */
+    for (int i=imin,n=0;i<=imax;i++,n++) // theta in [0.5 delta_th, pi-0.5 delta_th]
+    {
+      for (int j=jmin,m=0;j<=jmax;j++,m++) // phi in [0,2pi-delta_phi]
+      {
+        ind = i + maxntheta * (j + maxnphi*det);
+        ind2d = n + ntheta * m;
+        fluxdens_projected[ind] = fluxdens_det[ind2d];
+        w_lorentz_projected[ind] = w_det[ind2d];
+      }
+    }
+    for(int e = 0 ; e < num_extras ; e++)
+    {
+      CCTK_REAL *surface_projection = get_surface_projection(CCTK_PASS_CTOC, e);
+      for (int i=imin,n=0;i<=imax;i++,n++) // theta in [0.5 delta_th, pi-0.5 delta_th]
+      {
+        for (int j=jmin,m=0;j<=jmax;j++,m++) // phi in [0,2pi-delta_phi]
+        {
+          ind = i + maxntheta * (j + maxnphi*det);
+          ind2d = n + ntheta * m;
+          surface_projection[ind] = extras[e][ind2d];
+        }
+      }
+    }
+
     /* IO on CPU 0 */
     if (myproc == 0) {
-      ierr=Outflow_write_output(CCTK_PASS_CTOC,det, sum);
+      ierr=Outflow_write_output(CCTK_PASS_CTOC,det, sum, sum_thresh);
       if (ierr<0) {
 	CCTK_WARN(1,"writing of information to files failed");
       }
+      if (output_2d_data) {
+        ierr=Outflow_write_2d_output(CCTK_PASS_CTOC, "fluxdens", det,
+                fluxdens_file_created, fluxdens_det, w_det, surfaceelement_det);
+        if (ierr<0) {
+  	  CCTK_WARN(1,"writing of fluxdens information to files failed");
+        }
+        for(int i = 0 ; i < num_extras ; i++)
+        {
+          ierr=Outflow_write_2d_output(CCTK_PASS_CTOC,
+                  CCTK_VarName(extras_ind[i]), det,
+                  &extras_file_created[det*MAX_NUMBER_EXTRAS+i], extras[i],
+                  w_det, surfaceelement_det);
+          if (ierr<0) {
+            CCTK_WARN(1,"writing of extras information to files failed");
+          }
+        }
+      }
     }
   } // det loop over detector number
+
+  /* free temporary memory */
+  for(int i = 0 ; i < num_extras ; i++)
+  {
+    free(extras[i]);
+  }
 }
