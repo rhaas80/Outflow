@@ -36,6 +36,10 @@ void outflow (CCTK_ARGUMENTS);
 #define NGHOSTS 2
 #define ARRAY_INIT_VALUE 0.
 
+#ifndef M_PI
+#define M_PI 3.141592653589793238462643383279
+#endif
+
 static CCTK_INT file_created[MAX_NUMBER_DETECTORS];
 static CCTK_INT fluxdens_file_created[MAX_NUMBER_DETECTORS];
 static CCTK_INT extras_file_created[MAX_NUMBER_DETECTORS*MAX_NUMBER_EXTRAS];
@@ -60,7 +64,7 @@ static int get_j_and_w_local(int i, int j, int ntheta, CCTK_REAL
         jloc[3], CCTK_REAL *wloc);
 static CCTK_INT outflow_get_local_memory(CCTK_INT npoints);
 static int Outflow_write_output(CCTK_ARGUMENTS, CCTK_INT det, CCTK_REAL flux,
-        CCTK_REAL *threshold_fluxes);
+        CCTK_REAL w_lorentz, CCTK_REAL *threshold_fluxes);
 static int Outflow_write_2d_output(CCTK_ARGUMENTS, const char *varname, CCTK_INT
         det, CCTK_INT *file_created_2d, CCTK_REAL *data_det, CCTK_REAL *w_det,
         CCTK_REAL *surfaceelement_det);
@@ -177,7 +181,7 @@ static int Outflow_write_2d_output(CCTK_ARGUMENTS, const char *varname, CCTK_INT
 }
 
 static int Outflow_write_output(CCTK_ARGUMENTS, CCTK_INT det, CCTK_REAL flux,
-        CCTK_REAL *threshold_fluxes)
+        CCTK_REAL w_lorentz, CCTK_REAL *threshold_fluxes)
 {
   DECLARE_CCTK_PARAMETERS;
   DECLARE_CCTK_ARGUMENTS;
@@ -224,9 +228,9 @@ static int Outflow_write_output(CCTK_ARGUMENTS, CCTK_INT det, CCTK_REAL flux,
     fprintf(file,"# Outflow\n");
     fprintf(file,"# detector no.=%d\n",det);
     fprintf(file,"# gnuplot column index:\n");
-    fprintf(file,"# 1:it 2:t 3:flux");
+    fprintf(file,"# 1:it 2:t 3:flux 4:avg(w_lorentz)");
     if(num_thresholds > 0) {
-      col = 4;
+      col = 5;
       for(thresh = 0 ; thresh < num_thresholds ; thresh++) {
         fprintf(file," %d:w>=%g",col++,threshold[thresh]);
       }
@@ -236,9 +240,9 @@ static int Outflow_write_output(CCTK_ARGUMENTS, CCTK_INT det, CCTK_REAL flux,
 
   // write data
   sprintf (format_str_real,
-           "%%d\t%%%s\t%%%s", 
-           out_format,out_format);
-  fprintf(file, format_str_real, cctk_iteration, cctk_time, flux);
+           "%%d\t%%%s\t%%%s\t%%%s", 
+           out_format,out_format,out_format);
+  fprintf(file, format_str_real, cctk_iteration, cctk_time, flux, w_lorentz);
   sprintf (format_str_real, "\t%%%s", out_format);
   for(thresh = 0 ; thresh < num_thresholds ; thresh++) {
     fprintf(file,format_str_real,threshold_fluxes[thresh]);
@@ -821,13 +825,13 @@ void outflow (CCTK_ARGUMENTS)
     CCTK_REAL rdn[3], rhat[3], phihat[3], thetahat[3];
     CCTK_REAL jloc[3], wloc;
     CCTK_REAL th,ph;
-    CCTK_REAL sum, sum_thresh[MAX_NUMBER_TRESHOLDS]; // the value of the flux integral
+    CCTK_REAL sum, sum_thresh[MAX_NUMBER_TRESHOLDS], sum_w_lorentz; // the value of the flux integral
 
     const CCTK_INT myproc= CCTK_MyProc(cctkGH);
 
     CCTK_REAL iwtheta,iwphi,intweight;
     /* init integration vars */
-    sum = 0.;
+    sum = sum_w_lorentz = 0.;
     for (int t = 0 ; t < MAX_NUMBER_TRESHOLDS ; t++) {
       sum_thresh[t] = 0.;
     }
@@ -901,10 +905,14 @@ void outflow (CCTK_ARGUMENTS)
         fluxdens_det[n + ntheta*m] = fluxdens_temp; /* store flux density for output */
         surfaceelement_det[n + ntheta*m] = mag_rdn * dtp; /* area element */
 
+        // flux
         sum += df;
         if (verbose>4) {
           fprintf(stderr,"sum=%g\n",sum);
         }
+
+        // Lorentz factor
+        sum_w_lorentz += wloc * intweight * dtp;
 
         for(int t = 0 ; t < num_thresholds ; t++)
         {
@@ -923,6 +931,7 @@ void outflow (CCTK_ARGUMENTS)
 
       } // j : phi
     } // i : theta
+    sum_w_lorentz /= 4*M_PI; // average w_lorentz
 
     if (verbose>0) {
       CCTK_VInfo(CCTK_THORNSTRING,"flux value=%g on detector %d", sum,det);
@@ -958,7 +967,7 @@ void outflow (CCTK_ARGUMENTS)
 
     /* IO on CPU 0 */
     if (myproc == 0) {
-      ierr=Outflow_write_output(CCTK_PASS_CTOC,det, sum, sum_thresh);
+      ierr=Outflow_write_output(CCTK_PASS_CTOC,det, sum, sum_w_lorentz, sum_thresh);
       if (ierr<0) {
 	CCTK_WARN(1,"writing of information to files failed");
       }
