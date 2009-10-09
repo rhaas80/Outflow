@@ -10,32 +10,32 @@ INT compute_every_det[100] "How frequently to compute the outflow" STEERABLE=alw
   1:* :: ""
 } 1
 
-CCTK_INT num_detectors "how many detectors do we have"
+CCTK_INT num_detectors "how many detectors do we have" STEERABLE = RECOVER
 {
   0:* :: "whatever"
 } 0
 
-CCTK_INT surface_index[100] "the indices of the sphericalsurfaces from which we take the surfaces to compute the outflow on"
+CCTK_INT surface_index[100] "the indices of the sphericalsurfaces from which we take the surfaces to compute the outflow on" STEERABLE = ALWAYS
 {
   -1:* :: "whatever"
 } -1
 
-CCTK_STRING interpolator_name "Which interpolator should I use" 
+CCTK_STRING interpolator_name "Which interpolator should I use" STEERABLE = ALWAYS
 {
   ".+" :: "Any nonempty string"
 } "Hermite polynomial interpolation"
 
-CCTK_STRING interpolator_pars "Parameters for the interpolator"
+CCTK_STRING interpolator_pars "Parameters for the interpolator" STEERABLE = ALWAYS
 {
   ".*" :: "Any string that Util_TableSetFromString() will take"
 } "order=3"
 
-CCTK_STRING coord_system "What is the coord system?"
+CCTK_STRING coord_system "What is the coord system?" STEERABLE = ALWAYS
 {
   ".*" :: "Any smart string will do"
 } "cart3d"
 
-CCTK_INT verbose "How verbose do you want it?"
+CCTK_INT verbose "How verbose do you want it?" STEERABLE = ALWAYS
 {
   0:* :: "0 is nothing, 1 is interesting, >1 is crazy"
 } 1
