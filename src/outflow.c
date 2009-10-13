@@ -97,7 +97,7 @@ static int Outflow_write_2d_output(CCTK_ARGUMENTS, const char *varname, CCTK_INT
   fmode = (*file_created_2d>0) ? "a" : "w";
 
   // filename
-  Util_asprintf (&filename, "%s/outflow_det_%d_2d_%s.asc", out_dir, det, varname);
+  Util_asprintf (&filename, "%s/outflow_surface_det_%d_%s.asc", out_dir, det, varname);
   assert(filename);
 
   // open file
@@ -171,7 +171,7 @@ static int Outflow_write_2d_output(CCTK_ARGUMENTS, const char *varname, CCTK_INT
 
     fprintf(file, "\n"); /* create a grid edge for gnuplot */
   }
-  fprintf(file, "\n\n"); /* create a block for gnuplot */
+  fprintf(file, "\n"); /* create a block for gnuplot */
 
   fclose(file); 
   free(filename);
