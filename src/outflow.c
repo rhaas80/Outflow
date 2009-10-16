@@ -88,12 +88,15 @@ static int Outflow_write_2d_output(CCTK_ARGUMENTS, const char *varname, CCTK_INT
     CCTK_VInfo(CCTK_THORNSTRING, "writing output");
   }
 
-  // file mode: append if already written
+  // check input data
   if (det>=MAX_NUMBER_DETECTORS) {
     CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
                "warn: det=%d, but MAX_NUMBER_DETECTORS=%d, increase",
                det,MAX_NUMBER_DETECTORS);
   }
+  assert(surface_index[det] >= 0);
+  
+  // file mode: append if already written
   fmode = (*file_created_2d>0) ? "a" : "w";
 
   // filename
@@ -111,8 +114,11 @@ static int Outflow_write_2d_output(CCTK_ARGUMENTS, const char *varname, CCTK_INT
 
   // write header on startup
   if (*file_created_2d<=0) {
+    const CCTK_INT sn = surface_index[det];
+    const CCTK_INT ntheta=sf_ntheta[sn]-2*nghoststheta[sn];
+    const CCTK_INT nphi=sf_nphi[sn]-2*nghostsphi[sn];
     fprintf(file,"# 2d Outflow\n");
-    fprintf(file,"# detector no.=%d\n",det);
+    fprintf(file,"# detector no.=%d ntheta=%d nphi=%d\n",det,ntheta,nphi);
     fprintf(file,"# gnuplot column index:\n");
     fprintf(file,"# 1:it 2:t 3:x 4:y 5:z 6:%s 7:w_lorentz 8:surface_element\n", varname);
   }
@@ -123,10 +129,8 @@ static int Outflow_write_2d_output(CCTK_ARGUMENTS, const char *varname, CCTK_INT
            out_format, out_format, out_format, out_format, out_format,
            out_format, out_format);
 
-  assert(surface_index[det]);
   const CCTK_INT sn = surface_index[det];
   const CCTK_INT ntheta=sf_ntheta[sn]-2*nghoststheta[sn];
-
   const CCTK_INT imin=nghoststheta[sn], imax=sf_ntheta[sn]-nghoststheta[sn]-1;
   const CCTK_INT jmin=nghostsphi[sn], jmax=sf_nphi[sn]-nghostsphi[sn]-1;
   const CCTK_REAL oth=sf_origin_theta[sn];
