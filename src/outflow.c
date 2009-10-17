@@ -336,10 +336,10 @@ static int get_ja_w_and_extras_onto_detector(CCTK_ARGUMENTS, CCTK_INT sn,
     interp_npoints=0;
   }
 
-  // allocate memory for auxilliary arrays
+  // allocate memory for auxilliary arrays (of maximum possible size)
 # define ALLOCATE_TEMP(name) \
   if(name == NULL) \
-    name = outflow_allocate_array(npoints, #name); \
+    name = outflow_allocate_array(maxntheta*maxnphi, #name); \
   assert(name)
   
   ALLOCATE_TEMP(g11);
@@ -498,6 +498,18 @@ static int get_ja_w_and_extras_onto_detector(CCTK_ARGUMENTS, CCTK_INT sn,
                                output_array_types,
                                output_arrays);
 
+  if (ierr<0) {
+    CCTK_WARN(1,"interpolation screwed up");
+    retval = -1;
+  }
+
+  ierr = Util_TableDestroy(param_table_handle);
+
+  if (ierr != 0) {
+    CCTK_WARN(1,"Could not destroy table");
+    retval = -1;
+  }
+
   // compute current from primitive values
   for(int i = 0 ; i < npoints ; i++) {
     CCTK_REAL detg, dens, v2, w_lorentz;
@@ -533,18 +545,6 @@ static int get_ja_w_and_extras_onto_detector(CCTK_ARGUMENTS, CCTK_INT sn,
     jy[i] = dens * (alpha[i]*vely[i] - beta2[i]);
     jz[i] = dens * (alpha[i]*velz[i] - beta3[i]);
     w[i]  = w_lorentz;
-  }
-
-  if (ierr<0) {
-    CCTK_WARN(1,"interpolation screwed up");
-    retval = -1;
-  }
-
-  ierr = Util_TableDestroy(param_table_handle);
-
-  if (ierr != 0) {
-    CCTK_WARN(1,"Could not destroy table");
-    retval = -1;
   }
 
   return retval;
@@ -739,8 +739,8 @@ void outflow (CCTK_ARGUMENTS)
   }
 
   /* local memory allocation */
-  CCTK_INT npoints=maxntheta*maxnphi;
-  ierr=outflow_get_local_memory(npoints);
+  CCTK_INT maxnpoints=maxntheta*maxnphi;
+  ierr=outflow_get_local_memory(maxnpoints);
   if (ierr<0) {
     CCTK_WARN(1,"failed to allocate memory");
     return;
@@ -773,7 +773,7 @@ void outflow (CCTK_ARGUMENTS)
     {
       if(extras_ind[num_extras] == -1)
         break;
-      extras[num_extras] = (CCTK_REAL *)malloc(sizeof(CCTK_REAL)*npoints);
+      extras[num_extras] = (CCTK_REAL *)malloc(sizeof(CCTK_REAL)*maxnpoints);
       assert(extras[num_extras]);
     }
   } else {
