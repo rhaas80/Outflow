@@ -49,6 +49,10 @@ BOOLEAN output_2d_data "output 2d data on spherical surface" STEERABLE = ALWAYS
 {
 } "no"
 
+BOOLEAN output_relative_coordinates "output corrdinates on spheroid relative to sf_centroid, absolute coordinates otherwise"
+{
+} "no"
+
 # currently the maximum number of extras is hard-coded to 20
 CCTK_STRING extra_variables "extra (scalar) variables to project onto the spherical surface" STEERABLE = ALWAYS
 {
