@@ -2,22 +2,25 @@
 
 INT compute_every "How frequently to compute the outflow" STEERABLE=always
 {
-  1:* :: ""
+  1:* :: "number of iterations"
 } 1
 
 INT compute_every_det[100] "How frequently to compute the outflow" STEERABLE=always
 {
-  1:* :: ""
-} 1
+ -1   :: "take from compute_every"
+  0   :: "do not compute"
+  1:* :: "number of iterations"
+} -1
 
 CCTK_INT num_detectors "how many detectors do we have" STEERABLE = RECOVER
 {
-  0:* :: "whatever"
+  0:* :: "number of detectors"
 } 0
 
 CCTK_INT surface_index[100] "the indices of the sphericalsurfaces from which we take the surfaces to compute the outflow on" STEERABLE = ALWAYS
 {
-  -1:* :: "whatever"
+  -1   :: "Invalid"
+   0:* :: "valid surface" 
 } -1
 
 CCTK_STRING interpolator_name "Which interpolator should I use" STEERABLE = ALWAYS

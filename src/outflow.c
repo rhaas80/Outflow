@@ -485,7 +485,7 @@ static int get_ja_w_and_extras_onto_detector(CCTK_ARGUMENTS, CCTK_INT sn,
   
   const int coord_system_handle = CCTK_CoordSystemHandle(coord_system);
   if (coord_system_handle < 0)
-    CCTK_VWarn(-1, __LINE__, __FILE__, CCTK_THORNSTRING,
+    CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
         "can't get coordinate system handle for coordinate system \"%s\"!",
                coord_system);
 
@@ -741,10 +741,6 @@ void outflow (CCTK_ARGUMENTS)
   CCTK_INT extras_ind[MAX_NUMBER_EXTRAS];
   CCTK_REAL *extras[MAX_NUMBER_EXTRAS];
 
-  if (cctk_iteration % compute_every != 0) {
-    return;
-  }
-
   /* local memory allocation */
   CCTK_INT maxnpoints=maxntheta*maxnphi;
   ierr=outflow_get_local_memory(maxnpoints);
@@ -790,24 +786,37 @@ void outflow (CCTK_ARGUMENTS)
   /* loop over detectors */
   for (int det=0;det<num_detectors;det++)
   {
-    if ( cctk_iteration % compute_every_det[det] != 0 ) {
+    CCTK_INT my_compute_every;
+
+    /* check parameters and decide if we have to do anythin */
+    if ( compute_every_det[det] >= 0 ) {
+        my_compute_every = compute_every_det[det];
+    } else {
+        my_compute_every = compute_every;
+    }
+    if ( my_compute_every == 0 || cctk_iteration % my_compute_every != 0 ) {
       continue;
     }
+
     sn=surface_index[det];
-    assert(sn >= 0);
-    if (sn>=sphericalsurfaces_nsurfaces) {
-      CCTK_VInfo(CCTK_THORNSTRING,
+    if (sn < 0) {
+      CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
+                 "surface number sn=%d is invalid for detector %d", sn,det);
+      continue;
+    } else if (sn>=sphericalsurfaces_nsurfaces) {
+      CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
                  "surface number sn=%d too large, increase SphericalSurface::nsurfaces from its current value %d",
                  sn,sphericalsurfaces_nsurfaces);
       continue;
     }
     if (sf_valid[sn]<=0) {
-      CCTK_VInfo(CCTK_THORNSTRING,
+      CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
                  "didn't find valid detector surface for sn=%d, det=%d",sn,det);
       continue;
     }
+
     if(nghoststheta[sn] < NGHOSTS || nghostsphi[sn] < NGHOSTS) { // we need at least NGHOSTS ghost zones 
-      CCTK_VInfo(CCTK_THORNSTRING,
+      CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
                  "number of ghost zones for spherical surface %d must be at least %d.",sn,NGHOSTS);
       continue;
     }
