@@ -56,7 +56,7 @@ static int drdth_drdph(int i, int j,
                 CCTK_INT maxntheta, CCTK_INT maxnphi,
                 CCTK_REAL *sf_radius,
                 CCTK_REAL *ht, CCTK_REAL *hp);
-static int get_ja_w_and_extras_onto_detector(CCTK_ARGUMENTS, CCTK_INT sn,
+static int get_ja_w_and_extras_onto_detector(CCTK_ARGUMENTS, CCTK_INT det,
         CCTK_INT num_extras, CCTK_INT extras_ind[MAX_NUMBER_EXTRAS], CCTK_REAL
         *jx, CCTK_REAL *jy, CCTK_REAL *jz, CCTK_REAL *w, CCTK_REAL **extras);
 static int get_j_and_w_local(int i, int j, int ntheta, CCTK_REAL
@@ -306,15 +306,15 @@ static CCTK_REAL *get_surface_projection(CCTK_ARGUMENTS, int extra_num)
 }
 
 /* fills j1...j3,w and the extras with the interpolated numbers */
-static int get_ja_w_and_extras_onto_detector(CCTK_ARGUMENTS, CCTK_INT sn,
+static int get_ja_w_and_extras_onto_detector(CCTK_ARGUMENTS, CCTK_INT det,
         CCTK_INT num_extras, CCTK_INT extras_ind[MAX_NUMBER_EXTRAS], CCTK_REAL
         *jx, CCTK_REAL *jy, CCTK_REAL *jz, CCTK_REAL *w, CCTK_REAL **extras)
 {
   DECLARE_CCTK_ARGUMENTS; 
   DECLARE_CCTK_PARAMETERS; 
   int ierr, retval = 1;
-  CCTK_INT ind,ind2d;
-  CCTK_REAL th,ph,ct,st,cp,sp;
+  CCTK_INT sn,ind,ind2d;
+  CCTK_REAL th,ph,ct,st,cp,sp,rp;
   CCTK_INT ntheta,nphi,npoints;
   // auxilliary variables used in constructing j
   static CCTK_REAL *rho = NULL, *velx = NULL, *vely = NULL, *velz = NULL;
@@ -322,8 +322,12 @@ static int get_ja_w_and_extras_onto_detector(CCTK_ARGUMENTS, CCTK_INT sn,
   static CCTK_REAL *g11 = NULL, *g12 = NULL, *g13 = NULL, *g22 = NULL;
   static CCTK_REAL *g23 =  NULL, *g33 = NULL;
 
-  assert(sn>=0);
+  assert(det>=0);
+  assert(det<num_detectors);
   assert(jx); assert(jy); assert(jz);
+
+  sn = surface_index[det];
+  assert(sn>=0);
 
   ntheta=sf_ntheta[sn]-2*nghoststheta[sn];
   nphi=sf_nphi[sn]-2*nghostsphi[sn];
@@ -383,9 +387,15 @@ static int get_ja_w_and_extras_onto_detector(CCTK_ARGUMENTS, CCTK_INT sn,
       cp=cos(ph);
       sp=sin(ph);
       ind2d=n + ntheta*m;
-      det_x[ind2d]=sf_centroid_x[sn]+sf_radius[ind]*cp*st;
-      det_y[ind2d]=sf_centroid_y[sn]+sf_radius[ind]*sp*st;
-      det_z[ind2d]=sf_centroid_z[sn]+sf_radius[ind]*ct;
+      if (override_radius[det]) {
+        rp = radius[det];
+        assert(rp > 0.);
+      } else {
+        rp = sf_radius[ind];
+      }
+      det_x[ind2d]=sf_centroid_x[sn]+rp*cp*st;
+      det_y[ind2d]=sf_centroid_y[sn]+rp*sp*st;
+      det_z[ind2d]=sf_centroid_z[sn]+rp*ct;
     }
   }
 
@@ -835,7 +845,7 @@ void outflow (CCTK_ARGUMENTS)
                  ntheta,nphi,dth,dph);
     }
 
-    ierr=get_ja_w_and_extras_onto_detector(CCTK_PASS_CTOC, sn, num_extras,
+    ierr=get_ja_w_and_extras_onto_detector(CCTK_PASS_CTOC, det, num_extras,
             extras_ind, j1_det, j2_det, j3_det, w_det, extras);
     if (ierr<0) {
       CCTK_WARN(1,"unable to get g_ab, j^a and the extra variables onto the detector. not doing anything.");
@@ -877,7 +887,12 @@ void outflow (CCTK_ARGUMENTS)
 	intweight=iwphi*iwtheta;
 
         ind=i + maxntheta *(j+maxnphi*sn); // XXX not sf_ntheta!
-        rp=sf_radius[ind];
+        if (override_radius[det]) {
+            rp = radius[det];
+            assert(rp > 0.);
+        } else {
+          rp=sf_radius[ind];
+        }
 
         if (verbose>5) {
           fprintf(stderr,"r=%g theta=%g phi=%g\n",rp,th,ph);
@@ -894,16 +909,15 @@ void outflow (CCTK_ARGUMENTS)
         phihat  [0] = -sinp     ;phihat  [1] =  cosp     ;phihat  [2] =     0;
 
         /* get derivatives of r in theta and phi direction */
-        ierr=drdth_drdph(i, j,
-                         sn,
-                         dth,dph,
-                         verbose,
-                         maxntheta, maxnphi,
-                         sf_radius,
-                         &ht, &hp);
-        if (ierr<0) {
-          CCTK_WARN(1,"derivative computation failed");
-          continue;
+        if (override_radius[det]) {
+          ht = hp = 0.; /* spherical */
+        } else {
+          ierr=drdth_drdph(i, j, sn, dth,dph, verbose, maxntheta, maxnphi,
+                  sf_radius, &ht, &hp);
+          if (ierr<0) {
+            CCTK_WARN(1,"derivative computation failed");
+            continue;
+          }
         }
 
         // the vector surface element

@@ -23,6 +23,16 @@ CCTK_INT surface_index[100] "the indices of the sphericalsurfaces from which we 
    0:* :: "valid surface" 
 } -1
 
+BOOLEAN override_radius[100] "do not take radius values from spherical surface" STEERABLE = ALWAYS
+{
+} "no"
+
+CCTK_REAL radius[100] "spherical radius for this detector surface" STEERABLE = ALWAYS
+{
+  -1    :: "Invalid"
+  (0:*  :: "any positive value"
+} -1
+
 CCTK_STRING interpolator_name "Which interpolator should I use" STEERABLE = ALWAYS
 {
   ".+" :: "Any nonempty string"
