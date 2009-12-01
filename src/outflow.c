@@ -820,7 +820,7 @@ void outflow (CCTK_ARGUMENTS)
       continue;
     }
     if (sf_valid[sn]<=0) {
-      CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
+      CCTK_VWarn(1, __LINE__, __FILE__, CCTK_THORNSTRING,
                  "didn't find valid detector surface for sn=%d, det=%d",sn,det);
       continue;
     }
