@@ -109,6 +109,7 @@ static int Outflow_write_2d_output(CCTK_ARGUMENTS, const char *varname, CCTK_INT
     CCTK_VWarn (1, __LINE__, __FILE__, CCTK_THORNSTRING,
                 "write_outflow: Could not open scalar output file '%s'",
                 filename);
+    free(filename);
     return -1;
   }
 
@@ -230,6 +231,7 @@ static int Outflow_write_output(CCTK_ARGUMENTS, CCTK_INT det, CCTK_REAL flux,
     CCTK_VWarn (1, __LINE__, __FILE__, CCTK_THORNSTRING,
                 "write_outflow: Could not open scalar output file '%s'",
                 filename);
+    free(filename);
     return -1;
   }
 
@@ -325,6 +327,9 @@ static int get_ja_w_and_extras_onto_detector(CCTK_ARGUMENTS, CCTK_INT det,
   assert(det>=0);
   assert(det<num_detectors);
   assert(jx); assert(jy); assert(jz);
+  assert(w); assert(extras);
+  for (int i=0; i<num_extras; i++)
+      assert(extras[i]);
 
   sn = surface_index[det];
   assert(sn>=0);
@@ -481,23 +486,24 @@ static int get_ja_w_and_extras_onto_detector(CCTK_ARGUMENTS, CCTK_INT det,
                interpolator_name);
 
   int param_table_handle = Util_TableCreateFromString(interpolator_pars);
-
+  if (param_table_handle < 0) {
+    CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
+               "bad interpolator parameter(s) \"%s\"!",
+               interpolator_pars);
+  }
+  
   Util_TableSetIntArray(param_table_handle, NUM_OUTPUT_ARRAYS + num_extras,
                         operand_indices, "operand_indices");
   
   Util_TableSetIntArray(param_table_handle, NUM_OUTPUT_ARRAYS + num_extras, 
                         opcodes, "opcodes");
   
-  if (param_table_handle < 0)
-    CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
-               "bad interpolator parameter(s) \"%s\"!",
-               interpolator_pars);
-  
   const int coord_system_handle = CCTK_CoordSystemHandle(coord_system);
-  if (coord_system_handle < 0)
+  if (coord_system_handle < 0) {
     CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
         "can't get coordinate system handle for coordinate system \"%s\"!",
                coord_system);
+  }
 
   // actual interpolation call
   ierr = CCTK_InterpGridArrays(cctkGH,
@@ -516,11 +522,11 @@ static int get_ja_w_and_extras_onto_detector(CCTK_ARGUMENTS, CCTK_INT det,
 
   if (ierr<0) {
     CCTK_WARN(1,"interpolation screwed up");
-    retval = -1;
+    Util_TableDestroy(param_table_handle);
+    return -1;
   }
 
   ierr = Util_TableDestroy(param_table_handle);
-
   if (ierr != 0) {
     CCTK_WARN(1,"Could not destroy table");
     retval = -1;
