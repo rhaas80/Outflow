@@ -544,6 +544,22 @@ static int get_ja_w_and_extras_onto_detector(CCTK_ARGUMENTS, CCTK_INT det,
 
     detg = 2*g12[i]*g13[i]*g23[i] + g33[i]*(g11[i]*g22[i] - pow2(g12[i])) -
         g22[i]*pow2(g13[i]) - g11[i]*pow2(g23[i]);
+    if( detg < 0. ) 
+    {
+        static CCTK_INT last_warned = -1;
+
+        if(verbose > 1 || (verbose > 0 && last_warned != cctk_iteration))
+        {
+          CCTK_VWarn (1, __LINE__, __FILE__, CCTK_THORNSTRING,
+                "%s: Metric determinant in iteration %6d at %15.6g,%15.6g,%15.6g is :" 
+                "%15.6g from data g = [%15.6g,%15.6g,%15.6g,%15.6g,%15.6g,%15.6g]",
+                __func__, cctk_iteration, det_x[i],det_y[i],det_z[i], detg, 
+                g11[i],g12[i],g13[i],g22[i],g23[i],g33[i]);
+          last_warned = cctk_iteration;
+        }
+
+        detg = 1.;
+    }
 
     v2 = g11[i]*pow2(velx[i]) + g22[i]*pow2(vely[i]) + g33[i]*pow2(velz[i]) +
         2*g12[i]*velx[i]*vely[i] + 2*g13[i]*velx[i]*velz[i] +
