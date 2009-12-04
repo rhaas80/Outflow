@@ -320,7 +320,7 @@ static int get_ja_w_and_extras_onto_detector(CCTK_ARGUMENTS, CCTK_INT det,
 {
   DECLARE_CCTK_ARGUMENTS; 
   DECLARE_CCTK_PARAMETERS; 
-  int ierr, retval = 1;
+  int ierr;
   CCTK_INT sn,ind,ind2d;
   CCTK_REAL th,ph,ct,st,cp,sp,rp;
   CCTK_INT ntheta,nphi,npoints;
@@ -535,11 +535,11 @@ static int get_ja_w_and_extras_onto_detector(CCTK_ARGUMENTS, CCTK_INT det,
   ierr = Util_TableDestroy(param_table_handle);
   if (ierr != 0) {
     CCTK_WARN(1,"Could not destroy table");
-    retval = -1;
+    return -1;
   }
 
   // compute current from primitive values
-  for(int i = 0 ; i < npoints ; i++) {
+  for(int i = 0 ; i < interp_npoints ; i++) {
     CCTK_REAL detg, dens, v2, w_lorentz;
 
     detg = 2*g12[i]*g13[i]*g23[i] + g33[i]*(g11[i]*g22[i] - pow2(g12[i])) -
@@ -576,7 +576,7 @@ static int get_ja_w_and_extras_onto_detector(CCTK_ARGUMENTS, CCTK_INT det,
     w[i]  = w_lorentz;
   }
 
-  return retval;
+  return interp_npoints;
 
 }
 
@@ -758,6 +758,7 @@ void outflow (CCTK_ARGUMENTS)
   CCTK_INT sn, ind, ind2d, ierr;
   CCTK_REAL ht,hp;
   CCTK_REAL sint,sinp,cost,cosp,rp;
+  CCTK_INT interp_npoints;
   // variables related to the extra projected grid functions
   CCTK_INT num_extras;
   CCTK_INT extras_ind[MAX_NUMBER_EXTRAS];
@@ -857,11 +858,21 @@ void outflow (CCTK_ARGUMENTS)
                  ntheta,nphi,dth,dph);
     }
 
-    ierr=get_ja_w_and_extras_onto_detector(CCTK_PASS_CTOC, det, num_extras,
-            extras_ind, j1_det, j2_det, j3_det, w_det, extras);
-    if (ierr<0) {
+    interp_npoints=get_ja_w_and_extras_onto_detector(CCTK_PASS_CTOC, det, num_extras,
+                    extras_ind, j1_det, j2_det, j3_det, w_det, extras);
+    if (interp_npoints<0) {
       CCTK_WARN(1,"unable to get g_ab, j^a and the extra variables onto the detector. not doing anything.");
       continue;
+    }
+    if (interp_npoints==0) {
+      /* nothing to do (we are not cpu 0) */
+      if (verbose > 1) {
+        CCTK_VInfo(CCTK_THORNSTRING, "I have nothing to do for detector %d", det);
+      }
+      continue;
+    }
+    if (verbose > 1) {
+      CCTK_VInfo(CCTK_THORNSTRING, "integrating detector %d", det);
     }
 
     CCTK_REAL rdn[3], rhat[3], phihat[3], thetahat[3];
@@ -1011,27 +1022,25 @@ void outflow (CCTK_ARGUMENTS)
       }
     }
 
-    /* IO on CPU 0 */
-    if (myproc == 0) {
-      ierr=Outflow_write_output(CCTK_PASS_CTOC,det, sum, sum_w_lorentz, sum_thresh);
+    /* IO */
+    ierr=Outflow_write_output(CCTK_PASS_CTOC,det, sum, sum_w_lorentz, sum_thresh);
+    if (ierr<0) {
+      CCTK_WARN(1,"writing of information to files failed");
+    }
+    if (output_2d_data) {
+      ierr=Outflow_write_2d_output(CCTK_PASS_CTOC, "fluxdens", det,
+              fluxdens_file_created, fluxdens_det, w_det, surfaceelement_det);
       if (ierr<0) {
-	CCTK_WARN(1,"writing of information to files failed");
+        CCTK_WARN(1,"writing of fluxdens information to files failed");
       }
-      if (output_2d_data) {
-        ierr=Outflow_write_2d_output(CCTK_PASS_CTOC, "fluxdens", det,
-                fluxdens_file_created, fluxdens_det, w_det, surfaceelement_det);
+      for(int i = 0 ; i < num_extras ; i++)
+      {
+        ierr=Outflow_write_2d_output(CCTK_PASS_CTOC,
+                CCTK_VarName(extras_ind[i]), det,
+                &extras_file_created[det*MAX_NUMBER_EXTRAS+i], extras[i],
+                w_det, surfaceelement_det);
         if (ierr<0) {
-  	  CCTK_WARN(1,"writing of fluxdens information to files failed");
-        }
-        for(int i = 0 ; i < num_extras ; i++)
-        {
-          ierr=Outflow_write_2d_output(CCTK_PASS_CTOC,
-                  CCTK_VarName(extras_ind[i]), det,
-                  &extras_file_created[det*MAX_NUMBER_EXTRAS+i], extras[i],
-                  w_det, surfaceelement_det);
-          if (ierr<0) {
-            CCTK_WARN(1,"writing of extras information to files failed");
-          }
+          CCTK_WARN(1,"writing of extras information to files failed");
         }
       }
     }
