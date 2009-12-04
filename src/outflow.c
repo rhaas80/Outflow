@@ -174,9 +174,15 @@ static int Outflow_write_2d_output(CCTK_ARGUMENTS, const char *varname, CCTK_INT
     ph=oph + jmin * dph;
     cp=cos(ph);
     sp=sin(ph);
-    det_x=sf_centroid_x[sn]+sf_radius[ind]*cp*st;
-    det_y=sf_centroid_y[sn]+sf_radius[ind]*sp*st;
-    det_z=sf_centroid_z[sn]+sf_radius[ind]*ct;
+    if(output_relative_coordinates) {
+      det_x=sf_radius[ind]*cp*st;
+      det_y=sf_radius[ind]*sp*st;
+      det_z=sf_radius[ind]*ct;
+    } else {
+      det_x=sf_centroid_x[sn]+sf_radius[ind]*cp*st;
+      det_y=sf_centroid_y[sn]+sf_radius[ind]*sp*st;
+      det_z=sf_centroid_z[sn]+sf_radius[ind]*ct;
+    }
     fprintf(file, format_str_real, cctk_iteration, cctk_time, det_x,det_y,det_z,
             data_det[ind2d], w_det[ind2d], surfaceelement_det[ind2d]);
 
