@@ -4,7 +4,7 @@
 implements: outflow
 inherits: ADMBase SphericalSurface StaticConformal 
 
-REAL outflow_flux[num_detectors] TYPE=scalar tags='checkpoint="no"'
+REAL outflow_flux[num_detectors] TYPE=scalar tags='checkpoint="no"' "flux of mass through the detectors"
 
 REAL fluxdens_projected[num_detectors] TYPE=ARRAY DIM=2 SIZE=SphericalSurface::maxntheta,SphericalSurface::maxnphi DISTRIB=CONSTANT tags='checkpoint="no"' "2D (theta,phi) grid arrays for flux density"
 REAL w_lorentz_projected[num_detectors] TYPE=ARRAY DIM=2 SIZE=SphericalSurface::maxntheta,SphericalSurface::maxnphi DISTRIB=CONSTANT tags='checkpoint="no"' "2D (theta,phi) grid arrays for Lorentz factor"
