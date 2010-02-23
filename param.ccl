@@ -33,6 +33,11 @@ CCTK_REAL radius[100] "spherical radius for this detector surface" STEERABLE = A
   (0:*  :: "any positive value"
 } -1
 
+CCTK_REAL rad_rescale[100] "Factor for scaling radius for this detector surface (e.g. for buffer around AH surface)" STEERABLE = ALWAYS
+{
+  (0:*  :: "Anything positive"
+} 1
+
 CCTK_STRING interpolator_name "Which interpolator should I use" STEERABLE = ALWAYS
 {
   ".+" :: "Any nonempty string"

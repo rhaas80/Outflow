@@ -139,7 +139,7 @@ static int Outflow_write_2d_output(CCTK_ARGUMENTS, const char *varname, CCTK_INT
   const CCTK_REAL dth=sf_delta_theta[sn];
   const CCTK_REAL dph=sf_delta_phi[sn];
 
-  CCTK_REAL th, ph, ct,st, cp,sp;
+  CCTK_REAL th, ph, ct,st, cp,sp,rp;
   CCTK_REAL det_x, det_y, det_z;
   for (int i=imin,n=0;i<=imax;i++,n++) { // theta in [0.5 delta_th, pi-0.5 delta_th]
     th=oth + i * dth;
@@ -153,15 +153,16 @@ static int Outflow_write_2d_output(CCTK_ARGUMENTS, const char *varname, CCTK_INT
       ph=oph + j * dph;
       cp=cos(ph);
       sp=sin(ph);
+      rp=rad_rescale[det]*sf_radius[ind];
 
       if(output_relative_coordinates) {
-        det_x=sf_radius[ind]*cp*st;
-        det_y=sf_radius[ind]*sp*st;
-        det_z=sf_radius[ind]*ct;
+        det_x=rp*cp*st;
+        det_y=rp*sp*st;
+        det_z=rp*ct;
       } else {
-        det_x=sf_centroid_x[sn]+sf_radius[ind]*cp*st;
-        det_y=sf_centroid_y[sn]+sf_radius[ind]*sp*st;
-        det_z=sf_centroid_z[sn]+sf_radius[ind]*ct;
+        det_x=sf_centroid_x[sn]+rp*cp*st;
+        det_y=sf_centroid_y[sn]+rp*sp*st;
+        det_z=sf_centroid_z[sn]+rp*ct;
       }
 
       fprintf(file, format_str_real, cctk_iteration, cctk_time,
@@ -174,15 +175,17 @@ static int Outflow_write_2d_output(CCTK_ARGUMENTS, const char *varname, CCTK_INT
     ph=oph + jmin * dph;
     cp=cos(ph);
     sp=sin(ph);
+    rp=rad_rescale[det]*sf_radius[ind];
     if(output_relative_coordinates) {
-      det_x=sf_radius[ind]*cp*st;
-      det_y=sf_radius[ind]*sp*st;
-      det_z=sf_radius[ind]*ct;
+      det_x=rp*cp*st;
+      det_y=rp*sp*st;
+      det_z=rp*ct;
     } else {
-      det_x=sf_centroid_x[sn]+sf_radius[ind]*cp*st;
-      det_y=sf_centroid_y[sn]+sf_radius[ind]*sp*st;
-      det_z=sf_centroid_z[sn]+sf_radius[ind]*ct;
+      det_x=sf_centroid_x[sn]+rp*cp*st;
+      det_y=sf_centroid_y[sn]+rp*sp*st;
+      det_z=sf_centroid_z[sn]+rp*ct;
     }
+
     fprintf(file, format_str_real, cctk_iteration, cctk_time, det_x,det_y,det_z,
             data_det[ind2d], w_det[ind2d], surfaceelement_det[ind2d]);
 
@@ -402,7 +405,7 @@ static int get_ja_w_and_extras_onto_detector(CCTK_ARGUMENTS, CCTK_INT det,
         rp = radius[det];
         assert(rp > 0.);
       } else {
-        rp = sf_radius[ind];
+        rp = rad_rescale[det]*sf_radius[ind];
       }
       det_x[ind2d]=sf_centroid_x[sn]+rp*cp*st;
       det_y[ind2d]=sf_centroid_y[sn]+rp*sp*st;
@@ -930,7 +933,7 @@ void outflow (CCTK_ARGUMENTS)
             rp = radius[det];
             assert(rp > 0.);
         } else {
-          rp=sf_radius[ind];
+          rp=rad_rescale[det]*sf_radius[ind];
         }
 
         if (verbose>5) {
@@ -953,6 +956,8 @@ void outflow (CCTK_ARGUMENTS)
         } else {
           ierr=drdth_drdph(i, j, sn, dth,dph, verbose, maxntheta, maxnphi,
                   sf_radius, &ht, &hp);
+	  ht=rad_rescale[det]*ht;
+	  hp=rad_rescale[det]*hp;
           if (ierr<0) {
             CCTK_WARN(1,"derivative computation failed");
             continue;
