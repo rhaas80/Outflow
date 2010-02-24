@@ -899,8 +899,6 @@ void outflow (CCTK_ARGUMENTS)
     CCTK_REAL th,ph;
     CCTK_REAL sum, sum_thresh[MAX_NUMBER_TRESHOLDS], sum_w_lorentz; // the value of the flux integral
 
-    const CCTK_INT myproc= CCTK_MyProc(cctkGH);
-
     CCTK_REAL iwtheta,iwphi,intweight;
     /* init integration vars */
     sum = sum_w_lorentz = 0.;
@@ -1043,7 +1041,7 @@ void outflow (CCTK_ARGUMENTS)
       }
     }
 
-    /* IO */
+    /* IO (we only get here if we are CPU #0) */
     ierr=Outflow_write_output(CCTK_PASS_CTOC,det, sum, sum_w_lorentz, sum_thresh);
     if (ierr<0) {
       CCTK_WARN(1,"writing of information to files failed");
