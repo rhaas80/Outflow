@@ -9,20 +9,7 @@ STORAGE: surface_projection_5, surface_projection_6, surface_projection_7, surfa
 STORAGE: surface_projection_10, surface_projection_11, surface_projection_12, surface_projection_13, surface_projection_14, 
 STORAGE: surface_projection_15, surface_projection_16, surface_projection_17, surface_projection_18, surface_projection_19 
 
-schedule outflow_init at CCTK_INITIAL
-{
-  lang: C
-  options: global
-} "initialize outflow stuff"
-
-schedule outflow_postrecovery at CCTK_POST_RECOVER_VARIABLES
-{ 
-  LANG: C
-  OPTIONS: global
-} "initialize outflow stuff post recovery"
-
-schedule outflow at CCTK_POSTSTEP \
-   after SphericalSurface_HasBeenSet after update_sphere_const_rad
+schedule outflow at CCTK_ANALYSIS
 {
   lang: C
   options: global

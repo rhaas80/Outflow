@@ -23,8 +23,6 @@
  */
 
 // scheduled routines
-void outflow_init(CCTK_ARGUMENTS);
-void outflow_postrecovery(CCTK_ARGUMENTS);
 void outflow (CCTK_ARGUMENTS);
 
 #define DIM 3
@@ -655,39 +653,6 @@ static int drdth_drdph(int i, int j,
   return 1;
 }
 
-
-void outflow_init(CCTK_ARGUMENTS)
-{
-  DECLARE_CCTK_ARGUMENTS;
-  DECLARE_CCTK_PARAMETERS;
- 
-  if (verbose>0) {
-    CCTK_INFO("initialize outflow stuff");
-  }
-  for (int i=0;i<num_detectors;i++) {
-    outflow_flux[i]=0;
-  }
-
-  for (int i=0;i<MAX_NUMBER_DETECTORS;i++) {
-    file_created[i]=0;
-    fluxdens_file_created[i]=0;
-    for (int j=0;j<MAX_NUMBER_EXTRAS;j++) {
-      extras_file_created[i*MAX_NUMBER_EXTRAS+j]=0;
-    }
-  }
-}
-
-void outflow_postrecovery(CCTK_ARGUMENTS)
-{
-  DECLARE_CCTK_ARGUMENTS;
-  DECLARE_CCTK_PARAMETERS;
-  
-  if (verbose>0) CCTK_INFO("postrecovery: set flag to recreate header");
-
-  for (int i=0;i<MAX_NUMBER_DETECTORS;i++) {
-    file_created[i]=0;
-  }
-}
 
 static CCTK_REAL *outflow_allocate_array(CCTK_INT npoints, const char *name)
 {
