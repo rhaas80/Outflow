@@ -40,7 +40,6 @@ void outflow (CCTK_ARGUMENTS);
 
 static CCTK_INT file_created[MAX_NUMBER_DETECTORS];
 static CCTK_INT fluxdens_file_created[MAX_NUMBER_DETECTORS];
-static CCTK_INT extras_file_created[MAX_NUMBER_DETECTORS*MAX_NUMBER_EXTRAS];
 
 static inline CCTK_REAL pow2(CCTK_REAL x) {return x*x;}
 
@@ -62,24 +61,28 @@ static int get_j_and_w_local(int i, int j, int ntheta, CCTK_REAL
         jloc[3], CCTK_REAL *wloc);
 static CCTK_INT outflow_get_local_memory(CCTK_INT npoints);
 static int Outflow_write_output(CCTK_ARGUMENTS, CCTK_INT det, CCTK_REAL flux,
-        CCTK_REAL w_lorentz, CCTK_REAL *threshold_fluxes);
+        CCTK_REAL w_lorentz, const CCTK_REAL *threshold_fluxes);
 static int Outflow_write_2d_output(CCTK_ARGUMENTS, const char *varname, CCTK_INT
-        det, CCTK_INT *file_created_2d, CCTK_REAL *data_det, CCTK_REAL *w_det,
-        CCTK_REAL *surfaceelement_det);
+        det, CCTK_INT *file_created_2d, const CCTK_REAL *data_det, const CCTK_REAL *w_det,
+        const CCTK_REAL *surfaceelement_det, 
+        int num_extras, const CCTK_INT *extras_ind, CCTK_REAL * const extras[]);
 static CCTK_REAL *outflow_allocate_array(CCTK_INT npoints, const char *name);
 static CCTK_REAL *get_surface_projection(CCTK_ARGUMENTS, int extra_num);
 
 /* IO */
 static int Outflow_write_2d_output(CCTK_ARGUMENTS, const char *varname, CCTK_INT
-        det, CCTK_INT *file_created_2d, CCTK_REAL *data_det, CCTK_REAL *w_det,
-        CCTK_REAL *surfaceelement_det)
+        det, CCTK_INT *file_created_2d, const CCTK_REAL *data_det, const CCTK_REAL *w_det,
+        const CCTK_REAL *surfaceelement_det,
+        int num_extras, const CCTK_INT *extras_ind, CCTK_REAL * const extras[])
 {
   DECLARE_CCTK_PARAMETERS;
   DECLARE_CCTK_ARGUMENTS;
 
   char const *fmode;
   char *filename;
-  char format_str_real[2048]; // XXX fixed size
+  char format_str_fixed[2048]; // XXX fixed size
+  char format_str_extras[128]; // XXX fixed size
+  size_t len_written;
   FILE *file;
 
   if (verbose>3) {
@@ -119,14 +122,22 @@ static int Outflow_write_2d_output(CCTK_ARGUMENTS, const char *varname, CCTK_INT
     fprintf(file,"# 2d Outflow\n");
     fprintf(file,"# detector no.=%d ntheta=%d nphi=%d\n",det,ntheta,nphi);
     fprintf(file,"# gnuplot column index:\n");
-    fprintf(file,"# 1:it 2:t 3:x 4:y 5:z 6:%s 7:w_lorentz 8:surface_element\n", varname);
+    fprintf(file,"# 1:it 2:t 3:x 4:y 5:z 6:%s 7:w_lorentz 8:surface_element", varname);
+    for (int i = 0 ; i < num_extras ; i++) {
+      fprintf(file, " %d:%s", 9+i, CCTK_VarName(extras_ind[i]));
+    }
+    fprintf(file, "\n");
   }
 
   // write data
-  sprintf (format_str_real,
-           "%%d\t%%%s\t%%%s\t%%%s\t%%%s\t%%%s\t%%%s\t%%%s\n", 
+  len_written = snprintf (format_str_fixed, sizeof(format_str_fixed)/sizeof(format_str_fixed[0]),
+           "%%d\t%%%s\t%%%s\t%%%s\t%%%s\t%%%s\t%%%s\t%%%s", 
            out_format, out_format, out_format, out_format, out_format,
            out_format, out_format);
+  assert(len_written < sizeof(format_str_fixed)/sizeof(format_str_fixed[0]));
+  len_written = snprintf (format_str_extras, sizeof(format_str_extras)/sizeof(format_str_extras[0]),
+           "\t%%%s", out_format);
+  assert(len_written < sizeof(format_str_extras)/sizeof(format_str_extras[0]));
 
   const CCTK_INT sn = surface_index[det];
   const CCTK_INT ntheta=sf_ntheta[sn]-2*nghoststheta[sn];
@@ -163,9 +174,13 @@ static int Outflow_write_2d_output(CCTK_ARGUMENTS, const char *varname, CCTK_INT
         det_z=sf_centroid_z[sn]+rp*ct;
       }
 
-      fprintf(file, format_str_real, cctk_iteration, cctk_time,
+      fprintf(file, format_str_fixed, cctk_iteration, cctk_time,
               det_x,det_y,det_z, data_det[ind2d], w_det[ind2d],
               surfaceelement_det[ind2d]);
+      for (int e = 0 ; e < num_extras ; e++) {
+        fprintf(file, format_str_extras, extras[e][ind2d]);
+      }
+      fprintf(file, "\n");
     }
     /* repeat first angle to ge a closed surface in gnuplot */
     int ind = i + maxntheta *(jmin+maxnphi*sn); // XXX not sf_ntheta!
@@ -184,8 +199,12 @@ static int Outflow_write_2d_output(CCTK_ARGUMENTS, const char *varname, CCTK_INT
       det_z=sf_centroid_z[sn]+rp*ct;
     }
 
-    fprintf(file, format_str_real, cctk_iteration, cctk_time, det_x,det_y,det_z,
+    fprintf(file, format_str_fixed, cctk_iteration, cctk_time, det_x,det_y,det_z,
             data_det[ind2d], w_det[ind2d], surfaceelement_det[ind2d]);
+    for (int e = 0 ; e < num_extras ; e++) {
+      fprintf(file, format_str_extras, extras[e][ind2d]);
+    }
+    fprintf(file, "\n");
 
     fprintf(file, "\n"); /* create a grid edge for gnuplot */
   }
@@ -199,7 +218,7 @@ static int Outflow_write_2d_output(CCTK_ARGUMENTS, const char *varname, CCTK_INT
 }
 
 static int Outflow_write_output(CCTK_ARGUMENTS, CCTK_INT det, CCTK_REAL flux,
-        CCTK_REAL w_lorentz, CCTK_REAL *threshold_fluxes)
+        CCTK_REAL w_lorentz, const CCTK_REAL *threshold_fluxes)
 {
   DECLARE_CCTK_PARAMETERS;
   DECLARE_CCTK_ARGUMENTS;
@@ -1014,19 +1033,9 @@ void outflow (CCTK_ARGUMENTS)
     }
     if (output_2d_data) {
       ierr=Outflow_write_2d_output(CCTK_PASS_CTOC, "fluxdens", det,
-              fluxdens_file_created, fluxdens_det, w_det, surfaceelement_det);
+              &fluxdens_file_created[det], fluxdens_det, w_det, surfaceelement_det, num_extras, extras_ind, extras);
       if (ierr<0) {
         CCTK_WARN(1,"writing of fluxdens information to files failed");
-      }
-      for(int i = 0 ; i < num_extras ; i++)
-      {
-        ierr=Outflow_write_2d_output(CCTK_PASS_CTOC,
-                CCTK_VarName(extras_ind[i]), det,
-                &extras_file_created[det*MAX_NUMBER_EXTRAS+i], extras[i],
-                w_det, surfaceelement_det);
-        if (ierr<0) {
-          CCTK_WARN(1,"writing of extras information to files failed");
-        }
       }
     }
   } // det loop over detector number
