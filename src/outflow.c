@@ -417,34 +417,36 @@ static int get_ja_w_and_extras_onto_detector(CCTK_ARGUMENTS, CCTK_INT det,
         (const void *) det_z };
 
   // 3d input arrays
-  CCTK_INT input_array_indices[NUM_INPUT_ARRAYS + MAX_NUMBER_EXTRAS]
-    = { CCTK_VarIndex("ADMBase::gxx"),
-        CCTK_VarIndex("ADMBase::gxy"),
-        CCTK_VarIndex("ADMBase::gxz"),
-        CCTK_VarIndex("ADMBase::gyy"),
-        CCTK_VarIndex("ADMBase::gyz"),
-        CCTK_VarIndex("ADMBase::gzz"),
+  CCTK_STRING input_array_names[NUM_INPUT_ARRAYS]
+    = { "ADMBase::gxy",
+        "ADMBase::gxy",
+        "ADMBase::gxz",
+        "ADMBase::gyy",
+        "ADMBase::gyz",
+        "ADMBase::gzz",
 
-        CCTK_VarIndex("HydroBase::velx"),
-        CCTK_VarIndex("HydroBase::vely"),
-        CCTK_VarIndex("HydroBase::velz"),
-        CCTK_VarIndex("HydroBase::rho"),
+        "HydroBase::velx",
+        "HydroBase::vely",
+        "HydroBase::velz",
+        "HydroBase::rho",
 
-        CCTK_VarIndex("ADMBase::betax"),
-        CCTK_VarIndex("ADMBase::betay"),
-        CCTK_VarIndex("ADMBase::betaz"),
-        CCTK_VarIndex("ADMBase::alp"),
+        "ADMBase::betax",
+        "ADMBase::betay",
+        "ADMBase::betaz",
+        "ADMBase::alp",
       };
-  for(int i = 0 ; i < num_extras ; i++) {
-     input_array_indices[NUM_INPUT_ARRAYS + i] = extras_ind[i];
-  }
-  for(int i = 0 ; i < NUM_INPUT_ARRAYS + num_extras ; i++) {
+  CCTK_INT input_array_indices[NUM_INPUT_ARRAYS + MAX_NUMBER_EXTRAS];
+  for(int i = 0 ; i < NUM_INPUT_ARRAYS ; i++) {
+    input_array_indices[i] = CCTK_VarIndex(input_array_names[i]);
     if(input_array_indices[i] < 0) {
       CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
         "couldn't find variable '%s'",
-        CCTK_VarName(input_array_indices[i]));
+        input_array_names[i]);
         return -1; /*NOTREACHED*/
     }
+  }
+  for(int i = 0 ; i < num_extras ; i++) {
+     input_array_indices[NUM_INPUT_ARRAYS + i] = extras_ind[i];
   }
 
   CCTK_INT output_array_types[NUM_OUTPUT_ARRAYS + MAX_NUMBER_EXTRAS];
