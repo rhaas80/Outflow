@@ -437,7 +437,7 @@ static int get_ja_w_and_extras_onto_detector(CCTK_ARGUMENTS, CCTK_INT det,
 
   // 3d input arrays
   CCTK_STRING input_array_names[NUM_INPUT_ARRAYS]
-    = { "ADMBase::gxy",
+    = { "ADMBase::gxx",
         "ADMBase::gxy",
         "ADMBase::gxz",
         "ADMBase::gyy",
