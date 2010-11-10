@@ -162,7 +162,12 @@ static int Outflow_write_2d_output(CCTK_ARGUMENTS, const char *varname, CCTK_INT
       ph=oph + j * dph;
       cp=cos(ph);
       sp=sin(ph);
-      rp=rad_rescale[det]*sf_radius[ind];
+      if (override_radius[det]) {
+          rp = radius[det];
+          assert(rp > 0.);
+      } else {
+        rp=rad_rescale[det]*sf_radius[ind];
+      }
 
       if(output_relative_coordinates) {
         det_x=rp*cp*st;
@@ -188,7 +193,12 @@ static int Outflow_write_2d_output(CCTK_ARGUMENTS, const char *varname, CCTK_INT
     ph=oph + jmin * dph;
     cp=cos(ph);
     sp=sin(ph);
-    rp=rad_rescale[det]*sf_radius[ind];
+    if (override_radius[det]) {
+        rp = radius[det];
+        assert(rp > 0.);
+    } else {
+      rp=rad_rescale[det]*sf_radius[ind];
+    }
     if(output_relative_coordinates) {
       det_x=rp*cp*st;
       det_y=rp*sp*st;
