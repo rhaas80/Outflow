@@ -454,9 +454,15 @@ static int get_ja_w_and_extras_onto_detector(CCTK_ARGUMENTS, CCTK_INT det,
         "ADMBase::gyz",
         "ADMBase::gzz",
 
+#if ET_HYDROBASE
+        "HydroBase::vel[0]",
+        "HydroBase::vel[1]",
+        "HydroBase::vel[2]",
+#else
         "HydroBase::velx",
         "HydroBase::vely",
         "HydroBase::velz",
+#endif
         "HydroBase::rho",
 
         "ADMBase::betax",
