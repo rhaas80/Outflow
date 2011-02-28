@@ -961,7 +961,7 @@ void outflow (CCTK_ARGUMENTS)
         CCTK_REAL mag_rdn = 0;
         for(int idir = 0 ; idir < 3 ; idir++)
         {
-          rdn[idir] = pow2(rp)*sint*rhat[idir] - ht*rp*thetahat[idir] -
+          rdn[idir] = pow2(rp)*sint*rhat[idir] - ht*rp*sint*thetahat[idir] -
                       hp*rp*phihat[idir];
           mag_rdn += pow2(rdn[idir]);
         }
