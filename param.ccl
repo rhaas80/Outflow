@@ -12,11 +12,13 @@ INT compute_every_det[100] "How frequently to compute the outflow" STEERABLE=alw
   1:* :: "number of iterations"
 } -1
 
+## Number of detector surfaces
 CCTK_INT num_detectors "how many detectors do we have" STEERABLE = RECOVER
 {
   0:* :: "number of detectors"
 } 0
 
+## Surface parameters
 CCTK_INT surface_index[100] "the indices of the sphericalsurfaces from which we take the surfaces to compute the outflow on" STEERABLE = ALWAYS
 {
   -1   :: "Invalid"
@@ -38,6 +40,12 @@ CCTK_REAL rad_rescale[100] "Factor for scaling radius for this detector surface 
   (0:*  :: "Anything positive"
 } 1
 
+CCTK_STRING coord_system "What is the coord system?" STEERABLE = ALWAYS
+{
+  ".*" :: "Any smart string will do"
+} "cart3d"
+
+## Interpolator information
 CCTK_STRING interpolator_name "Which interpolator should I use" STEERABLE = ALWAYS
 {
   ".+" :: "Any nonempty string"
@@ -48,11 +56,7 @@ CCTK_STRING interpolator_pars "Parameters for the interpolator" STEERABLE = ALWA
   ".*" :: "Any string that Util_TableSetFromString() will take"
 } "order=3"
 
-CCTK_STRING coord_system "What is the coord system?" STEERABLE = ALWAYS
-{
-  ".*" :: "Any smart string will do"
-} "cart3d"
-
+## Output
 CCTK_INT verbose "How verbose do you want it?" STEERABLE = ALWAYS
 {
   0:* :: "0 is nothing, 1 is interesting, >1 is crazy"
@@ -67,7 +71,7 @@ BOOLEAN output_2d_data "output 2d data on spherical surface" STEERABLE = ALWAYS
 {
 } "no"
 
-BOOLEAN output_relative_coordinates "output corrdinates on spheroid relative to sf_centroid, absolute coordinates otherwise" STEERABLE = ALWAYS
+BOOLEAN output_relative_coordinates "output coordinates on spheroid relative to sf_centroid, absolute coordinates otherwise" STEERABLE = ALWAYS
 {
 } "no"
 
@@ -89,10 +93,10 @@ CCTK_REAL threshold[20] "compute fluxes with Lorentz factors above these levels 
   1:* :: "minimum Lorentz factor"
 } -1
 
-# for now I hardcode the current to use to be the flux of dens in Whisky but
+# for now I hard-code the current to use to be the flux of dens in Whisky but
 # I'd really like to turn this into a parameter also one might want to change
 # the interface over to be more RegridBoxes like with the option to use either
-# SphericalSurfaces or to force to paramaters
+# SphericalSurfaces or to force to parameters
 
 SHARES: SphericalSurface
 

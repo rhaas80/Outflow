@@ -1,7 +1,8 @@
 Cactus Code Thorn Outflow
 Thorn Author(s)     : Roland Haas roland.haas@physics.gatech.edu
 Thorn Maintainer(s) : Roland Haas roland.haas@physics.gatech.edu
+                      Tanja Bode  tanja.bode@physics.gatech.edu
 --------------------------------------------------------------------------
 
 Purpose of the thorn:
-calculate the flux across a spherical surface
+Calculate the flux across a spherical surface.
