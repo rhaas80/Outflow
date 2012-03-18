@@ -22,9 +22,14 @@
  * later on (roland)
  */
 
-// scheduled routines
+/******************************
+ ***** Scheduled routines ****
+ ******************************/
 void outflow (CCTK_ARGUMENTS);
 
+/******************************
+ ***** Hard coded limits ******
+ ******************************/
 #define DIM 3
 #define MAX_NUMBER_DETECTORS 100
 #define MAX_NUMBER_EXTRAS 20
@@ -37,15 +42,22 @@ void outflow (CCTK_ARGUMENTS);
 #ifndef M_PI
 #define M_PI 3.141592653589793238462643383279
 #endif
+static inline CCTK_REAL pow2(CCTK_REAL x) {return x*x;}
 
+/******************************************************
+ ***** records of which files need to be truncated ****
+ ******************************************************/
 static CCTK_INT file_created[MAX_NUMBER_DETECTORS];
 static CCTK_INT fluxdens_file_created[MAX_NUMBER_DETECTORS];
 
-static inline CCTK_REAL pow2(CCTK_REAL x) {return x*x;}
+/*************************
+ ***** Local routines ****
+ *************************/
 
-/* copied from Multipole */
+/* parse string of variables into array of variable indices (copied from Multipole) */
 static void fill_variable(int idx, const char *optstring, void *callback_arg);
 
+/* compute dr/dtheta and dr/dphi */
 static int drdth_drdph(int i, int j,
                 int sn,
                 CCTK_REAL dth, CCTK_REAL dph,
@@ -53,23 +65,40 @@ static int drdth_drdph(int i, int j,
                 CCTK_INT maxntheta, CCTK_INT maxnphi,
                 CCTK_REAL *sf_radius,
                 CCTK_REAL *ht, CCTK_REAL *hp);
+
+/* call interpolator and interpolate the current density and Lorentz factor onto
+ * the detector surface */
 static int get_ja_w_and_extras_onto_detector(CCTK_ARGUMENTS, CCTK_INT det,
         CCTK_INT num_extras, CCTK_INT extras_ind[MAX_NUMBER_EXTRAS], CCTK_REAL
         *jx, CCTK_REAL *jy, CCTK_REAL *jz, CCTK_REAL *w, CCTK_REAL **extras);
+
+/* utility routine to access an element on the interpolated surface */
 static int get_j_and_w_local(int i, int j, int ntheta, CCTK_REAL
         *j1_det,CCTK_REAL *j2_det,CCTK_REAL *j3_det, CCTK_REAL *w_det, CCTK_REAL
         jloc[3], CCTK_REAL *wloc);
+/* utility routine to get value of Cactus parameter surface_projection_<extra_num> */
+static CCTK_REAL *get_surface_projection(CCTK_ARGUMENTS, int extra_num);
+
+/* setup memory for interpolator call */
 static CCTK_INT outflow_get_local_memory(CCTK_INT npoints);
+static CCTK_REAL *outflow_allocate_array(CCTK_INT npoints, const char *name);
+
+/* write results to disk */
 static int Outflow_write_output(CCTK_ARGUMENTS, CCTK_INT det, CCTK_REAL flux,
         CCTK_REAL w_lorentz, const CCTK_REAL *threshold_fluxes);
 static int Outflow_write_2d_output(CCTK_ARGUMENTS, const char *varname, CCTK_INT
         det, CCTK_INT *file_created_2d, const CCTK_REAL *data_det, const CCTK_REAL *w_det,
         const CCTK_REAL *surfaceelement_det, 
         int num_extras, const CCTK_INT *extras_ind, CCTK_REAL * const extras[]);
-static CCTK_REAL *outflow_allocate_array(CCTK_INT npoints, const char *name);
-static CCTK_REAL *get_surface_projection(CCTK_ARGUMENTS, int extra_num);
 
-/* IO */
+
+/**********************************************************************/
+/*** Implementation                                                 ***/
+/**********************************************************************/
+
+/**********************************************************************/
+/*** IO                                                             ***/
+/**********************************************************************/
 static int Outflow_write_2d_output(CCTK_ARGUMENTS, const char *varname, CCTK_INT
         det, CCTK_INT *file_created_2d, const CCTK_REAL *data_det, const CCTK_REAL *w_det,
         const CCTK_REAL *surfaceelement_det,
@@ -80,8 +109,8 @@ static int Outflow_write_2d_output(CCTK_ARGUMENTS, const char *varname, CCTK_INT
 
   char const *fmode;
   char *filename;
-  char format_str_fixed[2048]; // XXX fixed size
-  char format_str_extras[128]; // XXX fixed size
+  char format_str_fixed[2048];
+  char format_str_extras[128];
   size_t len_written;
   FILE *file;
 
@@ -235,9 +264,9 @@ static int Outflow_write_output(CCTK_ARGUMENTS, CCTK_INT det, CCTK_REAL flux,
 
   char const *fmode;
   char *filename;
-  char varname[1024]; // XXX fixed size
+  char varname[1024];
   char file_extension[5]=".asc";
-  char format_str_real[2048]; // XXX fixed size
+  char format_str_real[2048];
   int thresh, col;
   FILE *file;
 
@@ -306,6 +335,10 @@ static int Outflow_write_output(CCTK_ARGUMENTS, CCTK_INT det, CCTK_REAL flux,
   return 1;
 }
 
+/**********************************************************************/
+/* Utility                                                            */
+/**********************************************************************/
+
 /* return pointer to surface_projection_<extra_num> */
 static CCTK_REAL *get_surface_projection(CCTK_ARGUMENTS, int extra_num)
 {
@@ -342,6 +375,10 @@ static CCTK_REAL *get_surface_projection(CCTK_ARGUMENTS, int extra_num)
 
   return retval;
 }
+
+/**********************************************************************/
+/* Interpolator call and surface access                               */
+/**********************************************************************/
 
 /* fills j1...j3,w and the extras with the interpolated numbers */
 static int get_ja_w_and_extras_onto_detector(CCTK_ARGUMENTS, CCTK_INT det,
@@ -771,6 +808,10 @@ static void fill_variable(int idx, const char *optstring, void *callback_arg)
   }
 }
 
+/**********************************************************************/
+/* Scheduled routines                                                 */
+/**********************************************************************/
+
 void outflow (CCTK_ARGUMENTS)
 {
   DECLARE_CCTK_ARGUMENTS;
@@ -864,6 +905,7 @@ void outflow (CCTK_ARGUMENTS)
       continue;
     }
 
+    /* interpolate onto surface */
     const CCTK_INT imin=nghoststheta[sn], imax=sf_ntheta[sn]-nghoststheta[sn]-1;
     const CCTK_INT jmin=nghostsphi[sn], jmax=sf_nphi[sn]-nghostsphi[sn]-1;
     const CCTK_INT ntheta = imax-imin+1, nphi = jmax-jmin+1;
@@ -891,10 +933,16 @@ void outflow (CCTK_ARGUMENTS)
       }
       continue;
     }
+
+    /*****************************************/
+    /* all code below executes only on cpu 0 */
+    /*****************************************/
+
     if (verbose > 1) {
       CCTK_VInfo(CCTK_THORNSTRING, "integrating detector %d", det);
     }
 
+    /* integrate on sphere */
     CCTK_REAL rdn[3], rhat[3], phihat[3], thetahat[3];
     CCTK_REAL jloc[3], wloc;
     CCTK_REAL th,ph;
@@ -938,6 +986,8 @@ void outflow (CCTK_ARGUMENTS)
         if (verbose>5) {
           fprintf(stderr,"r=%g theta=%g phi=%g\n",rp,th,ph);
         }
+
+        // this computes Eq. (2), (7) of the documentation
 
         // operates on interpolated values
         get_j_and_w_local(n,m,ntheta,
@@ -1014,6 +1064,7 @@ void outflow (CCTK_ARGUMENTS)
       CCTK_VInfo(CCTK_THORNSTRING,"flux value=%g on detector %d", sum,det);
     }
 
+    // main output
     outflow_flux[det]=sum;
 
     /* store results in grid arrays, translating indices on the way */
