@@ -946,11 +946,11 @@ void outflow (CCTK_ARGUMENTS)
     CCTK_REAL rdn[3], rhat[3], phihat[3], thetahat[3];
     CCTK_REAL jloc[3], wloc;
     CCTK_REAL th,ph;
-    CCTK_REAL sum, sum_thresh[MAX_NUMBER_TRESHOLDS], sum_w_lorentz; // the value of the flux integral
+    CCTK_REAL sum, sum_thresh[MAX_NUMBER_TRESHOLDS], sum_w_lorentz, area; // the value of the flux integral
 
     CCTK_REAL iwtheta,iwphi,intweight;
     /* init integration vars */
-    sum = sum_w_lorentz = 0.;
+    sum = sum_w_lorentz = area = 0.;
     for (int t = 0 ; t < MAX_NUMBER_TRESHOLDS ; t++) {
       sum_thresh[t] = 0.;
     }
@@ -1039,7 +1039,10 @@ void outflow (CCTK_ARGUMENTS)
         }
 
         // Lorentz factor
-        sum_w_lorentz += wloc * intweight * dtp;
+        sum_w_lorentz += wloc * intweight * mag_rdn * dtp;
+
+        // area of detector
+        area += intweight * mag_rdn * dtp;
 
         for(int t = 0 ; t < num_thresholds ; t++)
         {
@@ -1058,7 +1061,7 @@ void outflow (CCTK_ARGUMENTS)
 
       } // j : phi
     } // i : theta
-    sum_w_lorentz /= 4*M_PI; // average w_lorentz
+    sum_w_lorentz /= area; // average w_lorentz
 
     if (verbose>0) {
       CCTK_VInfo(CCTK_THORNSTRING,"flux value=%g on detector %d", sum,det);
