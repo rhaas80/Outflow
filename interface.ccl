@@ -2,7 +2,7 @@
 # $Header:$
 
 implements: outflow
-inherits: ADMBase SphericalSurface StaticConformal 
+inherits: ADMBase HydroBase SphericalSurface StaticConformal 
 
 REAL outflow_flux[num_detectors] TYPE=scalar tags='checkpoint="no"' "flux of mass through the detectors"
 

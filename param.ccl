@@ -93,11 +93,6 @@ CCTK_REAL threshold[20] "compute fluxes with Lorentz factors above these levels 
   1:* :: "minimum Lorentz factor"
 } -1
 
-# for now I hard-code the current to use to be the flux of dens in Whisky but
-# I'd really like to turn this into a parameter also one might want to change
-# the interface over to be more RegridBoxes like with the option to use either
-# SphericalSurfaces or to force to parameters
-
 SHARES: SphericalSurface
 
 USES INT maxntheta
