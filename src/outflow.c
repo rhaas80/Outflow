@@ -47,8 +47,7 @@ static inline CCTK_REAL pow2(CCTK_REAL x) {return x*x;}
 /******************************************************
  ***** records of which files need to be truncated ****
  ******************************************************/
-static CCTK_INT file_created[MAX_NUMBER_DETECTORS];
-static CCTK_INT fluxdens_file_created[MAX_NUMBER_DETECTORS];
+static CCTK_INT files_created = -1;
 
 /*************************
  ***** Local routines ****
@@ -83,11 +82,13 @@ static CCTK_REAL *get_surface_projection(CCTK_ARGUMENTS, int extra_num);
 static CCTK_INT outflow_get_local_memory(CCTK_INT npoints);
 static CCTK_REAL *outflow_allocate_array(CCTK_INT npoints, const char *name);
 
+/* replace '/' by '\' in file name to have Util_TableSet* accept it as a key */
+static const char *sanitize_filename(const char *fn);
 /* write results to disk */
 static int Outflow_write_output(CCTK_ARGUMENTS, CCTK_INT det, CCTK_REAL flux,
         CCTK_REAL w_lorentz, const CCTK_REAL *threshold_fluxes);
 static int Outflow_write_2d_output(CCTK_ARGUMENTS, const char *varname, CCTK_INT
-        det, CCTK_INT *file_created_2d, const CCTK_REAL *data_det, const CCTK_REAL *w_det,
+        det, const CCTK_REAL *data_det, const CCTK_REAL *w_det,
         const CCTK_REAL *surfaceelement_det, 
         int num_extras, const CCTK_INT *extras_ind, CCTK_REAL * const extras[]);
 
@@ -99,8 +100,24 @@ static int Outflow_write_2d_output(CCTK_ARGUMENTS, const char *varname, CCTK_INT
 /**********************************************************************/
 /*** IO                                                             ***/
 /**********************************************************************/
+static const char *sanitize_filename(const char *fn)
+{
+  char *sfn = Util_Strdup(fn);
+  if (sfn == NULL) {
+    CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
+               "Could not allocate memory for sanitized file name");
+  }
+
+  for (char *s = sfn ; *s != '\0' ; s++) {
+    if(*s == '/')
+      *s = '\\';
+  }
+
+  return sfn;
+}
+
 static int Outflow_write_2d_output(CCTK_ARGUMENTS, const char *varname, CCTK_INT
-        det, CCTK_INT *file_created_2d, const CCTK_REAL *data_det, const CCTK_REAL *w_det,
+        det, const CCTK_REAL *data_det, const CCTK_REAL *w_det,
         const CCTK_REAL *surfaceelement_det,
         int num_extras, const CCTK_INT *extras_ind, CCTK_REAL * const extras[])
 {
@@ -108,7 +125,9 @@ static int Outflow_write_2d_output(CCTK_ARGUMENTS, const char *varname, CCTK_INT
   DECLARE_CCTK_ARGUMENTS;
 
   char const *fmode;
-  char *filename;
+  int ierr;
+  CCTK_INT file_created;
+  char *filename, *key;
   char format_str_fixed[2048];
   char format_str_extras[128];
   size_t len_written;
@@ -126,12 +145,20 @@ static int Outflow_write_2d_output(CCTK_ARGUMENTS, const char *varname, CCTK_INT
   }
   assert(surface_index[det] >= 0);
   
-  // file mode: append if already written
-  fmode = (*file_created_2d>0) ? "a" : "w";
-
   // filename
   Util_asprintf (&filename, "%s/outflow_surface_det_%d_%s.asc", out_dir, det, varname);
   assert(filename);
+
+  // file mode: append if already written
+  file_created = 0;
+  key = sanitize_filename(filename);
+  ierr = Util_TableGetInt(files_created, &file_created, key);
+  if (ierr < 0 && ierr != UTIL_ERROR_TABLE_NO_SUCH_KEY) {
+    CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
+               "Internal error: could not check if file '%s' has already been created: %d",
+               filename, ierr);
+  }
+  fmode = !file_created && IO_TruncateOutputFiles(cctkGH) ? "w" : "a";
 
   // open file
   file = fopen (filename, fmode);
@@ -139,12 +166,13 @@ static int Outflow_write_2d_output(CCTK_ARGUMENTS, const char *varname, CCTK_INT
     CCTK_VWarn (1, __LINE__, __FILE__, CCTK_THORNSTRING,
                 "write_outflow: Could not open scalar output file '%s'",
                 filename);
+    free(key);
     free(filename);
     return -1;
   }
 
   // write header on startup
-  if (*file_created_2d<=0) {
+  if (!file_created) {
     const CCTK_INT sn = surface_index[det];
     const CCTK_INT ntheta=sf_ntheta[sn]-2*nghoststheta[sn];
     const CCTK_INT nphi=sf_nphi[sn]-2*nghostsphi[sn];
@@ -250,8 +278,9 @@ static int Outflow_write_2d_output(CCTK_ARGUMENTS, const char *varname, CCTK_INT
   fprintf(file, "\n"); /* create a block for gnuplot */
 
   fclose(file); 
+  Util_TableSetInt(files_created, 1, key);
+  free(key);
   free(filename);
-  *file_created_2d = 1;
 
   return 1;
 }
@@ -263,7 +292,9 @@ static int Outflow_write_output(CCTK_ARGUMENTS, CCTK_INT det, CCTK_REAL flux,
   DECLARE_CCTK_ARGUMENTS;
 
   char const *fmode;
-  char *filename;
+  int ierr;
+  CCTK_INT file_created;
+  char *filename, *key;
   char varname[1024];
   char file_extension[5]=".asc";
   char format_str_real[2048];
@@ -274,14 +305,6 @@ static int Outflow_write_output(CCTK_ARGUMENTS, CCTK_INT det, CCTK_REAL flux,
     CCTK_VInfo(CCTK_THORNSTRING, "writing output");
   }
 
-  // file mode: append if already written
-  if (det>=MAX_NUMBER_DETECTORS) {
-    CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
-               "warn: det=%d, but MAX_NUMBER_DETECTORS=%d, increase",
-               det,MAX_NUMBER_DETECTORS);
-  }
-  fmode = (file_created[det]>0) ? "a" : "w";
-
   // filename
   sprintf(varname, "outflow_det_%d",det);
 
@@ -290,18 +313,30 @@ static int Outflow_write_output(CCTK_ARGUMENTS, CCTK_INT det, CCTK_REAL flux,
   assert(filename);
   sprintf (filename, "%s/%s%s", out_dir, varname, file_extension);
 
+  // file mode: append if already written
+  file_created = 0;
+  key = sanitize_filename(filename);
+  ierr = Util_TableGetInt(files_created, &file_created, key);
+  if (ierr < 0 && ierr != UTIL_ERROR_TABLE_NO_SUCH_KEY) {
+    CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
+               "Internal error: could not check if file '%s' has already been created: %d",
+               filename, ierr);
+  }
+  fmode = !file_created && IO_TruncateOutputFiles(cctkGH) ? "w" : "a";
+
   // open file
   file = fopen (filename, fmode);
   if (!file) {
     CCTK_VWarn (1, __LINE__, __FILE__, CCTK_THORNSTRING,
                 "write_outflow: Could not open scalar output file '%s'",
                 filename);
+    free(key);
     free(filename);
     return -1;
   }
 
   // write header on startup
-  if (file_created[det]<=0) {
+  if (!file_created) {
     fprintf(file,"# Outflow\n");
     fprintf(file,"# detector no.=%d\n",det);
     fprintf(file,"# gnuplot column index:\n");
@@ -327,11 +362,10 @@ static int Outflow_write_output(CCTK_ARGUMENTS, CCTK_INT det, CCTK_REAL flux,
   fprintf(file,"\n");
 
   fclose(file); 
+  Util_TableSetInt(files_created, 1, key);
+  free(key);
   free(filename);
 
-  if (file_created[det]==0) {
-    file_created[det]=1;
-  }
   return 1;
 }
 
@@ -1097,7 +1131,7 @@ void outflow (CCTK_ARGUMENTS)
     }
     if (output_2d_data) {
       ierr=Outflow_write_2d_output(CCTK_PASS_CTOC, "fluxdens", det,
-              &fluxdens_file_created[det], fluxdens_det, w_det, surfaceelement_det, num_extras, extras_ind, extras);
+              fluxdens_det, w_det, surfaceelement_det, num_extras, extras_ind, extras);
       if (ierr<0) {
         CCTK_WARN(1,"writing of fluxdens information to files failed");
       }
@@ -1109,4 +1143,16 @@ void outflow (CCTK_ARGUMENTS)
   {
     free(extras[i]);
   }
+}
+
+int outflow_setup (void)
+{
+  files_created = Util_TableCreate(0);
+  if (files_created < 0) {
+    CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
+               "Internal error: could not create files_created table: %d",
+               files_created);
+  }
+
+  return 0;
 }
