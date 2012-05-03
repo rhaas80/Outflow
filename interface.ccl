@@ -2,7 +2,12 @@
 # $Header:$
 
 implements: outflow
-inherits: ADMBase HydroBase SphericalSurface StaticConformal 
+inherits: ADMBase SphericalSurface StaticConformal 
+
+CCTK_INT FUNCTION IO_TruncateOutputFiles \
+  (CCTK_POINTER_TO_CONST IN GH)
+
+REQUIRES FUNCTION IO_TruncateOutputFiles
 
 REAL outflow_flux[num_detectors] TYPE=scalar tags='checkpoint="no"' "flux of mass through the detectors"
 
