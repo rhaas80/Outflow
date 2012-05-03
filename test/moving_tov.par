@@ -1,5 +1,5 @@
 !DESC "Capet unigrid, one TOV, moving" 
-ActiveThorns = "time MoL coordbase symbase cartgrid3d ioutil boundary admbase staticconformal spacemask admcoupling coordgauge admmacros hydrobase grhydro grhydro_initdata tovsolver eos_omni Constants LocalReduce AEILocalInterp Carpet CarpetLib CarpetRegrid2 CarpetInterp CarpetReduce CarpetIOBasic LoopControl TmunuBase InitBase ReflectionSymmetry CarpetIOASCII SphericalSurface Outflow"
+ActiveThorns = "time MoL coordbase symbase cartgrid3d ioutil boundary admbase staticconformal spacemask admcoupling coordgauge admmacros hydrobase grhydro tovsolver eos_omni Constants LocalReduce AEILocalInterp Carpet CarpetLib CarpetRegrid2 CarpetInterp CarpetReduce CarpetIOBasic LoopControl TmunuBase InitBase ReflectionSymmetry CarpetIOASCII SphericalSurface Outflow"
 
 TmunuBase::stress_energy_storage	=	yes
 TmunuBase::stress_energy_at_RHS		=	yes
