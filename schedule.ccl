@@ -15,4 +15,10 @@ schedule outflow at CCTK_ANALYSIS
   options: global
 } "compute outflow"
 
+schedule outflow_setup at CCTK_STARTUP
+{
+  lang: C
+  options: global
+} "set up global ompute data structures"
+
 
