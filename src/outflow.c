@@ -7,6 +7,7 @@
 #include "cctk.h"
 #include "cctk_Arguments.h"
 #include "cctk_Parameters.h"
+#include "cctk_Functions.h"
 #include "util_Table.h"
 #include "util_String.h"
 
@@ -83,7 +84,7 @@ static CCTK_INT outflow_get_local_memory(CCTK_INT npoints);
 static CCTK_REAL *outflow_allocate_array(CCTK_INT npoints, const char *name);
 
 /* replace '/' by '\' in file name to have Util_TableSet* accept it as a key */
-static const char *sanitize_filename(const char *fn);
+static char *sanitize_filename(const char *fn);
 /* write results to disk */
 static int Outflow_write_output(CCTK_ARGUMENTS, CCTK_INT det, CCTK_REAL flux,
         CCTK_REAL w_lorentz, const CCTK_REAL *threshold_fluxes);
@@ -100,7 +101,7 @@ static int Outflow_write_2d_output(CCTK_ARGUMENTS, const char *varname, CCTK_INT
 /**********************************************************************/
 /*** IO                                                             ***/
 /**********************************************************************/
-static const char *sanitize_filename(const char *fn)
+static char *sanitize_filename(const char *fn)
 {
   char *sfn = Util_Strdup(fn);
   if (sfn == NULL) {
@@ -143,7 +144,6 @@ static int Outflow_write_2d_output(CCTK_ARGUMENTS, const char *varname, CCTK_INT
                "warn: det=%d, but MAX_NUMBER_DETECTORS=%d, increase",
                det,MAX_NUMBER_DETECTORS);
   }
-  assert(surface_index[det] >= 0);
   
   // filename
   Util_asprintf (&filename, "%s/outflow_surface_det_%d_%s.asc", out_dir, det, varname);
@@ -173,9 +173,10 @@ static int Outflow_write_2d_output(CCTK_ARGUMENTS, const char *varname, CCTK_INT
 
   // write header on startup
   if (!file_created) {
-    const CCTK_INT sn = surface_index[det];
+    const CCTK_INT sn = sf_IdFromName(surface_index[det], surface_name[det]);
     const CCTK_INT ntheta=sf_ntheta[sn]-2*nghoststheta[sn];
     const CCTK_INT nphi=sf_nphi[sn]-2*nghostsphi[sn];
+    assert(sn >= 0);
     fprintf(file,"# 2d Outflow\n");
     fprintf(file,"# detector no.=%d ntheta=%d nphi=%d\n",det,ntheta,nphi);
     fprintf(file,"# gnuplot column index:\n");
@@ -196,7 +197,7 @@ static int Outflow_write_2d_output(CCTK_ARGUMENTS, const char *varname, CCTK_INT
            "\t%%%s", out_format);
   assert(len_written < sizeof(format_str_extras)/sizeof(format_str_extras[0]));
 
-  const CCTK_INT sn = surface_index[det];
+  const CCTK_INT sn = sf_IdFromName(surface_index[det], surface_name[det]);
   const CCTK_INT ntheta=sf_ntheta[sn]-2*nghoststheta[sn];
   const CCTK_INT imin=nghoststheta[sn], imax=sf_ntheta[sn]-nghoststheta[sn]-1;
   const CCTK_INT jmin=nghostsphi[sn], jmax=sf_nphi[sn]-nghostsphi[sn]-1;
@@ -204,6 +205,7 @@ static int Outflow_write_2d_output(CCTK_ARGUMENTS, const char *varname, CCTK_INT
   const CCTK_REAL oph=sf_origin_phi[sn];
   const CCTK_REAL dth=sf_delta_theta[sn];
   const CCTK_REAL dph=sf_delta_phi[sn];
+  assert(sn >= 0);
 
   CCTK_REAL th, ph, ct,st, cp,sp,rp;
   CCTK_REAL det_x, det_y, det_z;
@@ -438,7 +440,7 @@ static int get_ja_w_and_extras_onto_detector(CCTK_ARGUMENTS, CCTK_INT det,
   for (int i=0; i<num_extras; i++)
       assert(extras[i]);
 
-  sn = surface_index[det];
+  sn = sf_IdFromName(surface_index[det], surface_name[det]);
   assert(sn>=0);
 
   ntheta=sf_ntheta[sn]-2*nghoststheta[sn];
@@ -910,7 +912,7 @@ void outflow (CCTK_ARGUMENTS)
       continue;
     }
 
-    sn=surface_index[det];
+    sn = sf_IdFromName(surface_index[det], surface_name[det]);
     if (sn < 0) {
       CCTK_VWarn(0, __LINE__, __FILE__, CCTK_THORNSTRING,
                  "surface number sn=%d is invalid for detector %d", sn,det);

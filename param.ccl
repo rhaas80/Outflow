@@ -25,6 +25,12 @@ CCTK_INT surface_index[100] "the indices of the sphericalsurfaces from which we 
    0:* :: "valid surface" 
 } -1
 
+CCTK_STRING surface_name[100] "the indices of the sphericalsurfaces from which we take the surfaces to compute the outflow on" STEERABLE=always
+{
+  ""  :: "use surface_index"
+  ".*" :: "any string"
+} ""
+
 BOOLEAN override_radius[100] "do not take radius values from spherical surface" STEERABLE = ALWAYS
 {
 } "no"

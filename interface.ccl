@@ -9,6 +9,11 @@ CCTK_INT FUNCTION IO_TruncateOutputFiles \
 
 REQUIRES FUNCTION IO_TruncateOutputFiles
 
+# translate SphericalSurface name into ID
+CCTK_INT \
+FUNCTION sf_IdFromName (CCTK_INT IN id, CCTK_POINTER_TO_CONST IN name)
+USES FUNCTION sf_IdFromName
+
 REAL outflow_flux[num_detectors] TYPE=scalar tags='checkpoint="no"' "flux of mass through the detectors"
 
 REAL fluxdens_projected[num_detectors] TYPE=ARRAY DIM=2 SIZE=SphericalSurface::maxntheta,SphericalSurface::maxnphi DISTRIB=CONSTANT tags='checkpoint="no"' "2D (theta,phi) grid arrays for flux density"

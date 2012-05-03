@@ -122,6 +122,7 @@ SphericalSurface::origin_z[1]     = 0.
 SphericalSurface::radius_x[1]     = 6.
 SphericalSurface::radius_y[1]     = 6.
 SphericalSurface::radius_z[1]     = 5.
+SphericalSurface::name[1]         = "ellipsoid"
 
 SphericalSurface::ntheta[0] = 10
 SphericalSurface::nphi  [0] = 8
@@ -135,7 +136,7 @@ SphericalSurface::nphi  [1] = 10
 Outflow::compute_every        = 2
 Outflow::num_detectors        = 2
 Outflow::surface_index[0]     = 0
-Outflow::surface_index[1]     = 1
+Outflow::surface_name[1]      = "ellipsoid"
 Outflow::extra_variables      = "grid::x grid::y"
 Outflow::interpolator_name    = "Lagrange polynomial interpolation"
 Outflow::interpolator_pars    = "order=4"
