@@ -151,4 +151,4 @@ IO::out_dir			= $parfile
 IOBasic::outInfo_every = 0
 
 IOASCII::out2D_every = 1
-IOASCII::out2D_vars  = "Outflow::surface_projection_0 Outflow::surface_projection_1"
+IOASCII::out2D_vars  = "Outflow::surface_projection_0[0] Outflow::surface_projection_0[1] Outflow::surface_projection_1[0] Outflow::surface_projection_1[1]"

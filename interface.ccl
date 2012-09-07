@@ -20,23 +20,13 @@ REAL fluxdens_projected[num_detectors] TYPE=ARRAY DIM=2 SIZE=SphericalSurface::m
 REAL w_lorentz_projected[num_detectors] TYPE=ARRAY DIM=2 SIZE=SphericalSurface::maxntheta,SphericalSurface::maxnphi DISTRIB=CONSTANT tags='checkpoint="no"' "2D (theta,phi) grid arrays for Lorentz factor"
 
 # extra variables projected onto the spherical surfaces
-REAL surface_projection_0[num_detectors] TYPE=ARRAY DIM=2 SIZE=SphericalSurface::maxntheta,SphericalSurface::maxnphi DISTRIB=CONSTANT tags='checkpoint="no"' "2D (theta,phi) grid arrays for points on the spherical surfaces"
-REAL surface_projection_1[num_detectors] TYPE=ARRAY DIM=2 SIZE=SphericalSurface::maxntheta,SphericalSurface::maxnphi DISTRIB=CONSTANT tags='checkpoint="no"' "2D (theta,phi) grid arrays for points on the spherical surfaces"
-REAL surface_projection_2[num_detectors] TYPE=ARRAY DIM=2 SIZE=SphericalSurface::maxntheta,SphericalSurface::maxnphi DISTRIB=CONSTANT tags='checkpoint="no"' "2D (theta,phi) grid arrays for points on the spherical surfaces"
-REAL surface_projection_3[num_detectors] TYPE=ARRAY DIM=2 SIZE=SphericalSurface::maxntheta,SphericalSurface::maxnphi DISTRIB=CONSTANT tags='checkpoint="no"' "2D (theta,phi) grid arrays for points on the spherical surfaces"
-REAL surface_projection_4[num_detectors] TYPE=ARRAY DIM=2 SIZE=SphericalSurface::maxntheta,SphericalSurface::maxnphi DISTRIB=CONSTANT tags='checkpoint="no"' "2D (theta,phi) grid arrays for points on the spherical surfaces"
-REAL surface_projection_5[num_detectors] TYPE=ARRAY DIM=2 SIZE=SphericalSurface::maxntheta,SphericalSurface::maxnphi DISTRIB=CONSTANT tags='checkpoint="no"' "2D (theta,phi) grid arrays for points on the spherical surfaces"
-REAL surface_projection_6[num_detectors] TYPE=ARRAY DIM=2 SIZE=SphericalSurface::maxntheta,SphericalSurface::maxnphi DISTRIB=CONSTANT tags='checkpoint="no"' "2D (theta,phi) grid arrays for points on the spherical surfaces"
-REAL surface_projection_7[num_detectors] TYPE=ARRAY DIM=2 SIZE=SphericalSurface::maxntheta,SphericalSurface::maxnphi DISTRIB=CONSTANT tags='checkpoint="no"' "2D (theta,phi) grid arrays for points on the spherical surfaces"
-REAL surface_projection_8[num_detectors] TYPE=ARRAY DIM=2 SIZE=SphericalSurface::maxntheta,SphericalSurface::maxnphi DISTRIB=CONSTANT tags='checkpoint="no"' "2D (theta,phi) grid arrays for points on the spherical surfaces"
-REAL surface_projection_9[num_detectors] TYPE=ARRAY DIM=2 SIZE=SphericalSurface::maxntheta,SphericalSurface::maxnphi DISTRIB=CONSTANT tags='checkpoint="no"' "2D (theta,phi) grid arrays for points on the spherical surfaces"
-REAL surface_projection_10[num_detectors] TYPE=ARRAY DIM=2 SIZE=SphericalSurface::maxntheta,SphericalSurface::maxnphi DISTRIB=CONSTANT tags='checkpoint="no"' "2D (theta,phi) grid arrays for points on the spherical surfaces"
-REAL surface_projection_11[num_detectors] TYPE=ARRAY DIM=2 SIZE=SphericalSurface::maxntheta,SphericalSurface::maxnphi DISTRIB=CONSTANT tags='checkpoint="no"' "2D (theta,phi) grid arrays for points on the spherical surfaces"
-REAL surface_projection_12[num_detectors] TYPE=ARRAY DIM=2 SIZE=SphericalSurface::maxntheta,SphericalSurface::maxnphi DISTRIB=CONSTANT tags='checkpoint="no"' "2D (theta,phi) grid arrays for points on the spherical surfaces"
-REAL surface_projection_13[num_detectors] TYPE=ARRAY DIM=2 SIZE=SphericalSurface::maxntheta,SphericalSurface::maxnphi DISTRIB=CONSTANT tags='checkpoint="no"' "2D (theta,phi) grid arrays for points on the spherical surfaces"
-REAL surface_projection_14[num_detectors] TYPE=ARRAY DIM=2 SIZE=SphericalSurface::maxntheta,SphericalSurface::maxnphi DISTRIB=CONSTANT tags='checkpoint="no"' "2D (theta,phi) grid arrays for points on the spherical surfaces"
-REAL surface_projection_15[num_detectors] TYPE=ARRAY DIM=2 SIZE=SphericalSurface::maxntheta,SphericalSurface::maxnphi DISTRIB=CONSTANT tags='checkpoint="no"' "2D (theta,phi) grid arrays for points on the spherical surfaces"
-REAL surface_projection_16[num_detectors] TYPE=ARRAY DIM=2 SIZE=SphericalSurface::maxntheta,SphericalSurface::maxnphi DISTRIB=CONSTANT tags='checkpoint="no"' "2D (theta,phi) grid arrays for points on the spherical surfaces"
-REAL surface_projection_17[num_detectors] TYPE=ARRAY DIM=2 SIZE=SphericalSurface::maxntheta,SphericalSurface::maxnphi DISTRIB=CONSTANT tags='checkpoint="no"' "2D (theta,phi) grid arrays for points on the spherical surfaces"
-REAL surface_projection_18[num_detectors] TYPE=ARRAY DIM=2 SIZE=SphericalSurface::maxntheta,SphericalSurface::maxnphi DISTRIB=CONSTANT tags='checkpoint="no"' "2D (theta,phi) grid arrays for points on the spherical surfaces"
-REAL surface_projection_19[num_detectors] TYPE=ARRAY DIM=2 SIZE=SphericalSurface::maxntheta,SphericalSurface::maxnphi DISTRIB=CONSTANT tags='checkpoint="no"' "2D (theta,phi) grid arrays for points on the spherical surfaces"
+REAL surface_projections[num_detectors] TYPE=ARRAY DIM=2 SIZE=SphericalSurface::maxntheta,SphericalSurface::maxnphi DISTRIB=CONSTANT tags='checkpoint="no"'
+{
+surface_projection_0, surface_projection_1, surface_projection_2, 
+surface_projection_3, surface_projection_4, surface_projection_5, 
+surface_projection_6, surface_projection_7, surface_projection_8, 
+surface_projection_9, surface_projection_10 surface_projection_11 
+surface_projection_12 surface_projection_13 surface_projection_14 
+surface_projection_15 surface_projection_16, surface_projection_17, 
+surface_projection_18, surface_projection_19
+} "2D (theta,phi) grid arrays for points on the spherical surfaces"

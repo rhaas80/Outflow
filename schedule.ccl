@@ -3,11 +3,7 @@
 STORAGE: outflow_flux
 STORAGE: fluxdens_projected
 STORAGE: w_lorentz_projected
-
-STORAGE: surface_projection_0, surface_projection_1, surface_projection_2, surface_projection_3, surface_projection_4, 
-STORAGE: surface_projection_5, surface_projection_6, surface_projection_7, surface_projection_8, surface_projection_9, 
-STORAGE: surface_projection_10, surface_projection_11, surface_projection_12, surface_projection_13, surface_projection_14, 
-STORAGE: surface_projection_15, surface_projection_16, surface_projection_17, surface_projection_18, surface_projection_19 
+STORAGE: surface_projections
 
 schedule outflow at CCTK_ANALYSIS
 {
