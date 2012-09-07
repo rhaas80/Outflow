@@ -87,7 +87,7 @@ static CCTK_REAL *outflow_allocate_array(CCTK_INT npoints, const char *name);
 static char *sanitize_filename(const char *fn);
 /* write results to disk */
 static int Outflow_write_output(CCTK_ARGUMENTS, CCTK_INT det, CCTK_REAL flux,
-        CCTK_REAL w_lorentz, const CCTK_REAL *threshold_fluxes);
+        CCTK_REAL avg_w_lorentz, const CCTK_REAL *threshold_fluxes);
 static int Outflow_write_2d_output(CCTK_ARGUMENTS, const char *varname, CCTK_INT
         det, const CCTK_REAL *data_det, const CCTK_REAL *w_det,
         const CCTK_REAL *surfaceelement_det, 
@@ -288,7 +288,7 @@ static int Outflow_write_2d_output(CCTK_ARGUMENTS, const char *varname, CCTK_INT
 }
 
 static int Outflow_write_output(CCTK_ARGUMENTS, CCTK_INT det, CCTK_REAL flux,
-        CCTK_REAL w_lorentz, const CCTK_REAL *threshold_fluxes)
+        CCTK_REAL avg_w_lorentz, const CCTK_REAL *threshold_fluxes)
 {
   DECLARE_CCTK_PARAMETERS;
   DECLARE_CCTK_ARGUMENTS;
@@ -356,7 +356,7 @@ static int Outflow_write_output(CCTK_ARGUMENTS, CCTK_INT det, CCTK_REAL flux,
   sprintf (format_str_real,
            "%%d\t%%%s\t%%%s\t%%%s", 
            out_format,out_format,out_format);
-  fprintf(file, format_str_real, cctk_iteration, cctk_time, flux, w_lorentz);
+  fprintf(file, format_str_real, cctk_iteration, cctk_time, flux, avg_w_lorentz);
   sprintf (format_str_real, "\t%%%s", out_format);
   for(thresh = 0 ; thresh < num_thresholds ; thresh++) {
     fprintf(file,format_str_real,threshold_fluxes[thresh]);
@@ -428,7 +428,7 @@ static int get_ja_w_and_extras_onto_detector(CCTK_ARGUMENTS, CCTK_INT det,
   CCTK_REAL th,ph,ct,st,cp,sp,rp;
   CCTK_INT ntheta,nphi,npoints;
   // auxilliary variables used in constructing j
-  static CCTK_REAL *rho = NULL, *velx = NULL, *vely = NULL, *velz = NULL;
+  static CCTK_REAL *rho0 = NULL, *velx = NULL, *vely = NULL, *velz = NULL;
   static CCTK_REAL *beta1 = NULL, *beta2 = NULL, *beta3 = NULL, *alpha = NULL;
   static CCTK_REAL *g11 = NULL, *g12 = NULL, *g13 = NULL, *g22 = NULL;
   static CCTK_REAL *g23 =  NULL, *g33 = NULL;
@@ -472,7 +472,7 @@ static int get_ja_w_and_extras_onto_detector(CCTK_ARGUMENTS, CCTK_INT det,
   ALLOCATE_TEMP(g22);
   ALLOCATE_TEMP(g23);
   ALLOCATE_TEMP(g33);
-  ALLOCATE_TEMP(rho); 
+  ALLOCATE_TEMP(rho0); 
   ALLOCATE_TEMP(velx);
   ALLOCATE_TEMP(vely);
   ALLOCATE_TEMP(velz);
@@ -568,7 +568,7 @@ static int get_ja_w_and_extras_onto_detector(CCTK_ARGUMENTS, CCTK_INT det,
         (void *) velx, 
         (void *) vely,
         (void *) velz,
-        (void *) rho, 
+        (void *) rho0, 
 
         (void *) beta1, 
         (void *) beta2,
@@ -645,7 +645,7 @@ static int get_ja_w_and_extras_onto_detector(CCTK_ARGUMENTS, CCTK_INT det,
 
   // compute current from primitive values
   for(int i = 0 ; i < interp_npoints ; i++) {
-    CCTK_REAL detg, dens, v2, w_lorentz;
+    CCTK_REAL detg, dens, v2, my_w_lorentz;
 
     detg = 2*g12[i]*g13[i]*g23[i] + g33[i]*(g11[i]*g22[i] - pow2(g12[i])) -
         g22[i]*pow2(g13[i]) - g11[i]*pow2(g23[i]);
@@ -670,8 +670,8 @@ static int get_ja_w_and_extras_onto_detector(CCTK_ARGUMENTS, CCTK_INT det,
         2*g12[i]*velx[i]*vely[i] + 2*g13[i]*velx[i]*velz[i] +
         2*g23[i]*vely[i]*velz[i];
 
-    w_lorentz = sqrt(1. / (1. - v2));
-    if( w_lorentz < 1. || v2 > 1 ) 
+    my_w_lorentz = sqrt(1. / (1. - v2));
+    if( my_w_lorentz < 1. || v2 > 1 ) 
     {
         static CCTK_INT last_warned = -1;
 
@@ -681,20 +681,20 @@ static int get_ja_w_and_extras_onto_detector(CCTK_ARGUMENTS, CCTK_INT det,
                 "%s: Unphysical Lorentz factor %15.6g, v2 = %15.6g for data "
                 "g = [%15.6g,%15.6g,%15.6g,%15.6g,%15.6g,%15.6g] "
                 "vel = [%15.6g,%15.6g,%15.6g] occured in iteration %d at location [%15.6g,%15.6g,%15.6g]",
-                __func__, w_lorentz,v2, g11[i],g12[i],g13[i],g22[i],g23[i],g33[i],
+                __func__, my_w_lorentz,v2, g11[i],g12[i],g13[i],g22[i],g23[i],g33[i],
                 velx[i],vely[i],velz[i], cctk_iteration,
                 det_x[i],det_y[i],det_z[i]);
           last_warned = cctk_iteration;
         }
 
-        w_lorentz = 1.;
+        my_w_lorentz = 1.;
     }
-    dens = sqrt(detg)*rho[i]*w_lorentz;
+    dens = sqrt(detg)*rho0[i]*my_w_lorentz;
 
     jx[i] = dens * (alpha[i]*velx[i] - beta1[i]);
     jy[i] = dens * (alpha[i]*vely[i] - beta2[i]);
     jz[i] = dens * (alpha[i]*velz[i] - beta3[i]);
-    w[i]  = w_lorentz;
+    w[i]  = my_w_lorentz;
   }
 
   return interp_npoints;
