@@ -91,8 +91,8 @@ ADMBase::initial_lapse = "tov"
 ADMBase::initial_shift = "tov"
 
 tovsolver::TOV_Rho_Central[0] = 1.28e-3
-tovsolver::TOV_Gamma[0]       = 2.0
-tovsolver::TOV_K[0]           = 100.0
+tovsolver::TOV_Gamma          = 2.0
+tovsolver::TOV_K              = 100.0
 tovsolver::TOV_Combine_Method = "maximum"
 tovsolver::TOV_Velocity_x[0] = 0.1
 tovsolver::TOV_Velocity_y[0] = -0.2
