@@ -3,6 +3,7 @@
 STORAGE: outflow_flux
 STORAGE: fluxdens_projected
 STORAGE: w_lorentz_projected
+STORAGE: eninf_projected
 STORAGE: surface_projections
 
 schedule outflow at CCTK_ANALYSIS

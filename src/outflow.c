@@ -68,14 +68,16 @@ static int drdth_drdph(int i, int j,
 
 /* call interpolator and interpolate the current density and Lorentz factor onto
  * the detector surface */
-static int get_ja_w_and_extras_onto_detector(CCTK_ARGUMENTS, CCTK_INT det,
+static int get_ja_w_eninf_and_extras_onto_detector(CCTK_ARGUMENTS, CCTK_INT det,
         CCTK_INT num_extras, CCTK_INT extras_ind[MAX_NUMBER_EXTRAS], CCTK_REAL
-        *jx, CCTK_REAL *jy, CCTK_REAL *jz, CCTK_REAL *w, CCTK_REAL **extras);
+        *jx, CCTK_REAL *jy, CCTK_REAL *jz, CCTK_REAL *w, CCTK_REAL * eninf,
+        CCTK_REAL **extras);
 
 /* utility routine to access an element on the interpolated surface */
-static int get_j_and_w_local(int i, int j, int ntheta, CCTK_REAL
-        *j1_det,CCTK_REAL *j2_det,CCTK_REAL *j3_det, CCTK_REAL *w_det, CCTK_REAL
-        jloc[3], CCTK_REAL *wloc);
+static int get_j_w_and_eninf_local(int i, int j, int ntheta, CCTK_REAL
+        *j1_det,CCTK_REAL *j2_det,CCTK_REAL *j3_det, CCTK_REAL *w_det,
+        CCTK_REAL *eninf_det, CCTK_REAL jloc[3], CCTK_REAL *wloc,
+        CCTK_REAL * eninf);
 /* utility routine to get value of Cactus parameter surface_projection_<extra_num> */
 static CCTK_REAL *get_surface_projection(CCTK_ARGUMENTS, int extra_num);
 
@@ -87,10 +89,11 @@ static CCTK_REAL *outflow_allocate_array(CCTK_INT npoints, const char *name);
 static char *sanitize_filename(const char *fn);
 /* write results to disk */
 static int Outflow_write_output(CCTK_ARGUMENTS, CCTK_INT det, CCTK_REAL flux,
-        CCTK_REAL avg_w_lorentz, const CCTK_REAL *threshold_fluxes);
+        CCTK_REAL avg_w_lorentz, CCTK_REAL avg_eninf,
+        const CCTK_REAL *threshold_fluxes);
 static int Outflow_write_2d_output(CCTK_ARGUMENTS, const char *varname, CCTK_INT
         det, const CCTK_REAL *data_det, const CCTK_REAL *w_det,
-        const CCTK_REAL *surfaceelement_det, 
+        const CCTK_REAL *eninf_det, const CCTK_REAL *surfaceelement_det,
         int num_extras, const CCTK_INT *extras_ind, CCTK_REAL * const extras[]);
 
 
@@ -119,7 +122,7 @@ static char *sanitize_filename(const char *fn)
 
 static int Outflow_write_2d_output(CCTK_ARGUMENTS, const char *varname, CCTK_INT
         det, const CCTK_REAL *data_det, const CCTK_REAL *w_det,
-        const CCTK_REAL *surfaceelement_det,
+        const CCTK_REAL *eninf_det, const CCTK_REAL *surfaceelement_det,
         int num_extras, const CCTK_INT *extras_ind, CCTK_REAL * const extras[])
 {
   DECLARE_CCTK_PARAMETERS;
@@ -180,7 +183,7 @@ static int Outflow_write_2d_output(CCTK_ARGUMENTS, const char *varname, CCTK_INT
     fprintf(file,"# 2d Outflow\n");
     fprintf(file,"# detector no.=%d ntheta=%d nphi=%d\n",det,ntheta,nphi);
     fprintf(file,"# gnuplot column index:\n");
-    fprintf(file,"# 1:it 2:t 3:x 4:y 5:z 6:%s 7:w_lorentz 8:surface_element", varname);
+    fprintf(file,"# 1:it 2:t 3:x 4:y 5:z 6:%s 7:w_lorentz 8:eninf 9:surface_element", varname);
     for (int i = 0 ; i < num_extras ; i++) {
       fprintf(file, " %d:%s", 9+i, CCTK_VarName(extras_ind[i]));
     }
@@ -189,9 +192,9 @@ static int Outflow_write_2d_output(CCTK_ARGUMENTS, const char *varname, CCTK_INT
 
   // write data
   len_written = snprintf (format_str_fixed, sizeof(format_str_fixed)/sizeof(format_str_fixed[0]),
-           "%%d\t%%%s\t%%%s\t%%%s\t%%%s\t%%%s\t%%%s\t%%%s", 
+           "%%d\t%%%s\t%%%s\t%%%s\t%%%s\t%%%s\t%%%s\t%%%s\t%%%s",
            out_format, out_format, out_format, out_format, out_format,
-           out_format, out_format);
+           out_format, out_format, out_format);
   assert(len_written < sizeof(format_str_fixed)/sizeof(format_str_fixed[0]));
   len_written = snprintf (format_str_extras, sizeof(format_str_extras)/sizeof(format_str_extras[0]),
            "\t%%%s", out_format);
@@ -240,7 +243,7 @@ static int Outflow_write_2d_output(CCTK_ARGUMENTS, const char *varname, CCTK_INT
 
       fprintf(file, format_str_fixed, cctk_iteration, cctk_time,
               det_x,det_y,det_z, data_det[ind2d], w_det[ind2d],
-              surfaceelement_det[ind2d]);
+              eninf_det[ind2d], surfaceelement_det[ind2d]);
       for (int e = 0 ; e < num_extras ; e++) {
         fprintf(file, format_str_extras, extras[e][ind2d]);
       }
@@ -269,7 +272,8 @@ static int Outflow_write_2d_output(CCTK_ARGUMENTS, const char *varname, CCTK_INT
     }
 
     fprintf(file, format_str_fixed, cctk_iteration, cctk_time, det_x,det_y,det_z,
-            data_det[ind2d], w_det[ind2d], surfaceelement_det[ind2d]);
+            data_det[ind2d], w_det[ind2d], eninf_det[ind2d],
+            surfaceelement_det[ind2d]);
     for (int e = 0 ; e < num_extras ; e++) {
       fprintf(file, format_str_extras, extras[e][ind2d]);
     }
@@ -288,7 +292,8 @@ static int Outflow_write_2d_output(CCTK_ARGUMENTS, const char *varname, CCTK_INT
 }
 
 static int Outflow_write_output(CCTK_ARGUMENTS, CCTK_INT det, CCTK_REAL flux,
-        CCTK_REAL avg_w_lorentz, const CCTK_REAL *threshold_fluxes)
+        CCTK_REAL avg_w_lorentz, CCTK_REAL avg_eninf,
+        const CCTK_REAL *threshold_fluxes)
 {
   DECLARE_CCTK_PARAMETERS;
   DECLARE_CCTK_ARGUMENTS;
@@ -306,6 +311,10 @@ static int Outflow_write_output(CCTK_ARGUMENTS, CCTK_INT det, CCTK_REAL flux,
   if (verbose>3) {
     CCTK_VInfo(CCTK_THORNSTRING, "writing output");
   }
+  /* Threshold options */
+  int threshold_on_w_lorentz = CCTK_Equals(threshold_on_var, "w_lorentz");
+  int threshold_on_eninf = CCTK_Equals(threshold_on_var, "eninf");
+  assert(threshold_on_w_lorentz || threshold_on_eninf);
 
   // filename
   sprintf(varname, "outflow_det_%d",det);
@@ -342,11 +351,16 @@ static int Outflow_write_output(CCTK_ARGUMENTS, CCTK_INT det, CCTK_REAL flux,
     fprintf(file,"# Outflow\n");
     fprintf(file,"# detector no.=%d\n",det);
     fprintf(file,"# gnuplot column index:\n");
-    fprintf(file,"# 1:it 2:t 3:flux 4:avg(w_lorentz)");
+    fprintf(file,"# 1:it 2:t 3:flux 4:avg(w_lorentz) 5:avg(eninf)");
     if(num_thresholds > 0) {
-      col = 5;
+      col = 6;
       for(thresh = 0 ; thresh < num_thresholds ; thresh++) {
-        fprintf(file," %d:w>=%g",col++,threshold[thresh]);
+        if(threshold_on_w_lorentz) {
+          fprintf(file," %d:w>=%g",col++,threshold[thresh]);
+        }
+        if(threshold_on_eninf) {
+          fprintf(file," %d:eninf>=%g",col++,threshold[thresh]);
+        }
       }
     }
     fprintf(file,"\n");
@@ -354,9 +368,10 @@ static int Outflow_write_output(CCTK_ARGUMENTS, CCTK_INT det, CCTK_REAL flux,
 
   // write data
   sprintf (format_str_real,
-           "%%d\t%%%s\t%%%s\t%%%s", 
-           out_format,out_format,out_format);
-  fprintf(file, format_str_real, cctk_iteration, cctk_time, flux, avg_w_lorentz);
+           "%%d\t%%%s\t%%%s\t%%%s\t%%%s",
+           out_format,out_format,out_format,out_format);
+  fprintf(file, format_str_real, cctk_iteration, cctk_time, flux, avg_w_lorentz,
+          avg_eninf);
   sprintf (format_str_real, "\t%%%s", out_format);
   for(thresh = 0 ; thresh < num_thresholds ; thresh++) {
     fprintf(file,format_str_real,threshold_fluxes[thresh]);
@@ -416,10 +431,11 @@ static CCTK_REAL *get_surface_projection(CCTK_ARGUMENTS, int extra_num)
 /* Interpolator call and surface access                               */
 /**********************************************************************/
 
-/* fills j1...j3,w and the extras with the interpolated numbers */
-static int get_ja_w_and_extras_onto_detector(CCTK_ARGUMENTS, CCTK_INT det,
+/* fills j1...j3,w,eninf and the extras with the interpolated numbers */
+static int get_ja_w_eninf_and_extras_onto_detector(CCTK_ARGUMENTS, CCTK_INT det,
         CCTK_INT num_extras, CCTK_INT extras_ind[MAX_NUMBER_EXTRAS], CCTK_REAL
-        *jx, CCTK_REAL *jy, CCTK_REAL *jz, CCTK_REAL *w, CCTK_REAL **extras)
+        *jx, CCTK_REAL *jy, CCTK_REAL *jz, CCTK_REAL *w, CCTK_REAL *eninf,
+        CCTK_REAL **extras)
 {
   DECLARE_CCTK_ARGUMENTS; 
   DECLARE_CCTK_PARAMETERS; 
@@ -436,7 +452,7 @@ static int get_ja_w_and_extras_onto_detector(CCTK_ARGUMENTS, CCTK_INT det,
   assert(det>=0);
   assert(det<num_detectors);
   assert(jx); assert(jy); assert(jz);
-  assert(w); assert(extras);
+  assert(w); assert(eninf); assert(extras);
   for (int i=0; i<num_extras; i++)
       assert(extras[i]);
 
@@ -645,7 +661,7 @@ static int get_ja_w_and_extras_onto_detector(CCTK_ARGUMENTS, CCTK_INT det,
 
   // compute current from primitive values
   for(int i = 0 ; i < interp_npoints ; i++) {
-    CCTK_REAL detg, dens, v2, my_w_lorentz;
+    CCTK_REAL detg, dens, vlowx, vlowy, vlowz, v2, my_w_lorentz, my_eninf;
 
     detg = 2*g12[i]*g13[i]*g23[i] + g33[i]*(g11[i]*g22[i] - pow2(g12[i])) -
         g22[i]*pow2(g13[i]) - g11[i]*pow2(g23[i]);
@@ -666,9 +682,11 @@ static int get_ja_w_and_extras_onto_detector(CCTK_ARGUMENTS, CCTK_INT det,
         detg = 1.;
     }
 
-    v2 = g11[i]*pow2(velx[i]) + g22[i]*pow2(vely[i]) + g33[i]*pow2(velz[i]) +
-        2*g12[i]*velx[i]*vely[i] + 2*g13[i]*velx[i]*velz[i] +
-        2*g23[i]*vely[i]*velz[i];
+    vlowx = g11[i]*velx[i] + g12[i]*vely[i] + g13[i]*velz[i];
+    vlowy = g12[i]*velx[i] + g22[i]*vely[i] + g23[i]*velz[i];
+    vlowz = g13[i]*velx[i] + g23[i]*vely[i] + g33[i]*velz[i];
+
+    v2 = vlowx*velx[i] + vlowy*vely[i] + vlowz*velz[i];
 
     my_w_lorentz = sqrt(1. / (1. - v2));
     if( my_w_lorentz < 1. || v2 > 1 ) 
@@ -689,21 +707,25 @@ static int get_ja_w_and_extras_onto_detector(CCTK_ARGUMENTS, CCTK_INT det,
 
         my_w_lorentz = 1.;
     }
+    my_eninf = my_w_lorentz*(vlowx*beta1[i] + vlowy*beta2[i] + vlowz*beta3[i]
+            - alpha[i]);
     dens = sqrt(detg)*rho0[i]*my_w_lorentz;
 
     jx[i] = dens * (alpha[i]*velx[i] - beta1[i]);
     jy[i] = dens * (alpha[i]*vely[i] - beta2[i]);
     jz[i] = dens * (alpha[i]*velz[i] - beta3[i]);
     w[i]  = my_w_lorentz;
+    eninf[i] = my_eninf;
   }
 
   return interp_npoints;
 
 }
 
-static int get_j_and_w_local(int i, int j, int ntheta,
+static int get_j_w_and_eninf_local(int i, int j, int ntheta,
                   CCTK_REAL *j1_det,CCTK_REAL *j2_det,CCTK_REAL *j3_det,
-                  CCTK_REAL *w_det, CCTK_REAL jloc[3], CCTK_REAL *wloc)
+                  CCTK_REAL *w_det, CCTK_REAL *eninf_det,
+                  CCTK_REAL jloc[3], CCTK_REAL *wloc, CCTK_REAL *eninfloc)
 {
   CCTK_INT ind2d=i + ntheta*j;
   /* jloc_i - upstairs index */
@@ -711,6 +733,7 @@ static int get_j_and_w_local(int i, int j, int ntheta,
   jloc[1]=j2_det[ind2d];
   jloc[2]=j3_det[ind2d];
   *wloc  =w_det[ind2d];
+  *eninfloc=eninf_det[ind2d];
 
   return 1;
 }
@@ -784,7 +807,7 @@ static CCTK_REAL *outflow_allocate_array(CCTK_INT npoints, const char *name)
 }
 
 
-static CCTK_REAL *j1_det, *j2_det, *j3_det, *w_det, *fluxdens_det, *surfaceelement_det;
+static CCTK_REAL *j1_det, *j2_det, *j3_det, *w_det, *eninf_det, *fluxdens_det, *surfaceelement_det;
 static CCTK_INT outflow_get_local_memory(CCTK_INT npoints)
 {
   DECLARE_CCTK_PARAMETERS;
@@ -800,6 +823,7 @@ static CCTK_INT outflow_get_local_memory(CCTK_INT npoints)
     j2_det=outflow_allocate_array(npoints,"j2_det");
     j3_det=outflow_allocate_array(npoints,"j3_det");
     w_det =outflow_allocate_array(npoints,"w_det");
+    eninf_det=outflow_allocate_array(npoints,"eninf_det");
     fluxdens_det =outflow_allocate_array(npoints,"fluxdens_det");
     surfaceelement_det =outflow_allocate_array(npoints,"surfaceelement_det");
     // update memory allocation flag
@@ -855,6 +879,11 @@ void outflow (CCTK_ARGUMENTS)
   CCTK_INT extras_ind[MAX_NUMBER_EXTRAS];
   CCTK_REAL *extras[MAX_NUMBER_EXTRAS];
 
+  /* Threshold options */
+  int threshold_on_w_lorentz = CCTK_Equals(threshold_on_var, "w_lorentz");
+  int threshold_on_eninf = CCTK_Equals(threshold_on_var, "eninf");
+  assert(threshold_on_w_lorentz || threshold_on_eninf);
+
   /* local memory allocation */
   CCTK_INT maxnpoints=maxntheta*maxnphi;
   ierr=outflow_get_local_memory(maxnpoints);
@@ -865,7 +894,8 @@ void outflow (CCTK_ARGUMENTS)
 
   /* clear the grid arrays */
   for(int i = 0 ; i < maxntheta*maxnphi*num_detectors ; i++)
-    fluxdens_projected[i] = w_lorentz_projected[i] = ARRAY_INIT_VALUE;
+    fluxdens_projected[i] = w_lorentz_projected[i] = eninf_projected[i] =
+        ARRAY_INIT_VALUE;
   for(int e = 0 ; e < MAX_NUMBER_EXTRAS ; e++)
   {
     CCTK_REAL *surface_projection = get_surface_projection(CCTK_PASS_CTOC, e);
@@ -950,8 +980,9 @@ void outflow (CCTK_ARGUMENTS)
                  ntheta,nphi,dth,dph);
     }
 
-    interp_npoints=get_ja_w_and_extras_onto_detector(CCTK_PASS_CTOC, det, num_extras,
-                    extras_ind, j1_det, j2_det, j3_det, w_det, extras);
+    interp_npoints=get_ja_w_eninf_and_extras_onto_detector(CCTK_PASS_CTOC, det,
+                    num_extras, extras_ind, j1_det, j2_det, j3_det, w_det,
+                    eninf_det, extras);
     if (interp_npoints<0) {
       CCTK_WARN(1,"unable to get g_ab, j^a and the extra variables onto the detector. not doing anything.");
       continue;
@@ -974,13 +1005,14 @@ void outflow (CCTK_ARGUMENTS)
 
     /* integrate on sphere */
     CCTK_REAL rdn[3], rhat[3], phihat[3], thetahat[3];
-    CCTK_REAL jloc[3], wloc;
+    CCTK_REAL jloc[3], wloc, eninfloc;
     CCTK_REAL th,ph;
     CCTK_REAL sum, sum_thresh[MAX_NUMBER_TRESHOLDS], sum_w_lorentz, area; // the value of the flux integral
+    CCTK_REAL sum_eninf;
 
     CCTK_REAL iwtheta,iwphi,intweight;
     /* init integration vars */
-    sum = sum_w_lorentz = area = 0.;
+    sum = sum_w_lorentz = sum_eninf = area = 0.;
     for (int t = 0 ; t < MAX_NUMBER_TRESHOLDS ; t++) {
       sum_thresh[t] = 0.;
     }
@@ -1020,9 +1052,10 @@ void outflow (CCTK_ARGUMENTS)
         // this computes Eq. (2), (7) of the documentation
 
         // operates on interpolated values
-        get_j_and_w_local(n,m,ntheta,
+        get_j_w_and_eninf_local(n,m,ntheta,
                       j1_det,j2_det,j3_det,
-                      w_det,jloc,&wloc);
+                      w_det,eninf_det,jloc,
+                      &wloc,&eninfloc);
 
         // the flat space-like 3d unit vectors
         rhat    [0] =  cosp*sint;rhat    [1] =  sinp*sint;rhat    [2] =  cost;
@@ -1071,18 +1104,23 @@ void outflow (CCTK_ARGUMENTS)
         // Lorentz factor
         sum_w_lorentz += wloc * intweight * mag_rdn * dtp;
 
+        // Specific energy at infinity
+        sum_eninf += eninfloc * intweight * mag_rdn * dtp;
+
         // area of detector
         area += intweight * mag_rdn * dtp;
 
         for(int t = 0 ; t < num_thresholds ; t++)
         {
-          if(threshold[t] == -1) {
-            CCTK_VWarn(1, __LINE__, __FILE__, CCTK_THORNSTRING,
-                       "threshold %d is set to -1, ignoring.", t);
-            continue;
+          if(threshold_on_w_lorentz) {
+            if(wloc >= threshold[t]) {
+              sum_thresh[t] += df;
+            }
           }
-          if(wloc >= threshold[t]) {
-            sum_thresh[t] += df;
+          else if(threshold_on_eninf) {
+            if(eninfloc >= threshold[t]) {
+              sum_thresh[t] += df;
+            }
           }
           if (verbose>4) {
             fprintf(stderr,"sum_thresh[%d]=%g\n",t,sum_thresh[t]);
@@ -1092,6 +1130,7 @@ void outflow (CCTK_ARGUMENTS)
       } // j : phi
     } // i : theta
     sum_w_lorentz /= area; // average w_lorentz
+    sum_eninf /= area; // average eninf
 
     if (verbose>0) {
       CCTK_VInfo(CCTK_THORNSTRING,"flux value=%g on detector %d", sum,det);
@@ -1110,6 +1149,7 @@ void outflow (CCTK_ARGUMENTS)
         ind2d = n + ntheta * m;
         fluxdens_projected[ind] = fluxdens_det[ind2d];
         w_lorentz_projected[ind] = w_det[ind2d];
+        eninf_projected[ind] = eninf_det[ind2d];
       }
     }
     for(int e = 0 ; e < num_extras ; e++)
@@ -1127,13 +1167,14 @@ void outflow (CCTK_ARGUMENTS)
     }
 
     /* IO (we only get here if we are CPU #0) */
-    ierr=Outflow_write_output(CCTK_PASS_CTOC,det, sum, sum_w_lorentz, sum_thresh);
+    ierr=Outflow_write_output(CCTK_PASS_CTOC,det, sum, sum_w_lorentz, sum_eninf, sum_thresh);
     if (ierr<0) {
       CCTK_WARN(1,"writing of information to files failed");
     }
     if (output_2d_data) {
       ierr=Outflow_write_2d_output(CCTK_PASS_CTOC, "fluxdens", det,
-              fluxdens_det, w_det, surfaceelement_det, num_extras, extras_ind, extras);
+              fluxdens_det, w_det, eninf_det, surfaceelement_det,
+              num_extras, extras_ind, extras);
       if (ierr<0) {
         CCTK_WARN(1,"writing of fluxdens information to files failed");
       }

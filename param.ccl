@@ -87,17 +87,22 @@ CCTK_STRING extra_variables "extra (scalar) variables to project onto the spheri
  ".*" :: "Any Cactus variables"
 } ""
 
+KEYWORD threshold_on_var "Which variable to use as threshold"
+{
+    "eninf"     :: "(Approximate) specific energy at infinity, - u_t - 1"
+    "w_lorentz" :: "Lorentz factor"
+} "w_lorentz"
+
 CCTK_INT num_thresholds "how many thresholds to use" STEERABLE = ALWAYS
 {
   0    :: "ignore thresholds, output only one flux"
   1:20 :: "how many to use"
 } 0
 
-CCTK_REAL threshold[20] "compute fluxes with Lorentz factors above these levels only" STEERABLE = ALWAYS
+CCTK_REAL threshold[20] "compute fluxes with Lorentz factors / specific energy at infinity above these levels only" STEERABLE = ALWAYS
 {
-  -1  :: "do not compute"
-  1:* :: "minimum Lorentz factor"
-} -1
+  *:* :: "Any real number"
+} 0
 
 SHARES: SphericalSurface
 
