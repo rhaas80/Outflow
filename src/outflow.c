@@ -707,8 +707,9 @@ static int get_ja_w_eninf_and_extras_onto_detector(CCTK_ARGUMENTS, CCTK_INT det,
 
         my_w_lorentz = 1.;
     }
-    my_eninf = my_w_lorentz*(vlowx*beta1[i] + vlowy*beta2[i] + vlowz*beta3[i]
-            - alpha[i]);
+    /* - u_t - 1 */
+    my_eninf = - my_w_lorentz*(vlowx*beta1[i] + vlowy*beta2[i] + vlowz*beta3[i]
+            - alpha[i]) - 1.0;
     dens = sqrt(detg)*rho0[i]*my_w_lorentz;
 
     jx[i] = dens * (alpha[i]*velx[i] - beta1[i]);
