@@ -23,6 +23,8 @@
  * later on (roland)
  */
 
+#error "Outflow: This repository is no longer maintained. Please switch to https://bitbucket.org/einsteintoolkit/einsteinanalysis.git"
+
 /******************************
  ***** Scheduled routines ****
  ******************************/
