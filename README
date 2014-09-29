@@ -6,3 +6,9 @@ Thorn Maintainer(s) : Roland Haas roland.haas@physics.gatech.edu
 
 Purpose of the thorn:
 Calculate the flux across a spherical surface.
+
+This thorn has moved. Please use the version in
+
+https://bitbucket.org/einsteintoolkit/einsteinanalysis.git
+
+instead.
